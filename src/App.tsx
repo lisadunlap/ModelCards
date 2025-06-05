@@ -5,6 +5,8 @@ import { Search, Filter, ChevronDown, ChevronRight, Info, TrendingUp, Eye } from
 interface DifferenceData {
   difference: string;
   category: string;
+  coarse_cluster_label?: string;
+  fine_cluster_label?: string;
   impact: string;
   reason?: string;
   type?: string;
@@ -134,11 +136,14 @@ const ModelDifferenceAnalyzer = () => {
   const [data, setData] = useState<DifferenceData[]>([]);
   const [filteredData, setFilteredData] = useState<DifferenceData[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedCoarseCluster, setSelectedCoarseCluster] = useState('all');
+  const [selectedFineCluster, setSelectedFineCluster] = useState('all');
   const [selectedImpact, setSelectedImpact] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
   const [selectedUnexpectedBehavior, setSelectedUnexpectedBehavior] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedRows, setExpandedRows] = useState(new Set());
+  const [chartView, setChartView] = useState<'coarse' | 'fine' | 'category'>('category');
 
   // Load and process data
   useEffect(() => {
@@ -174,6 +179,14 @@ const ModelDifferenceAnalyzer = () => {
       filtered = filtered.filter(item => item.category === selectedCategory);
     }
 
+    if (selectedCoarseCluster !== 'all') {
+      filtered = filtered.filter(item => item.coarse_cluster_label === selectedCoarseCluster);
+    }
+
+    if (selectedFineCluster !== 'all') {
+      filtered = filtered.filter(item => item.fine_cluster_label === selectedFineCluster);
+    }
+
     if (selectedImpact !== 'all') {
       filtered = filtered.filter(item => item.impact === selectedImpact);
     }
@@ -190,18 +203,35 @@ const ModelDifferenceAnalyzer = () => {
       filtered = filtered.filter(item => 
         item.difference?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.unexpected_behavior?.toLowerCase().includes(searchTerm.toLowerCase())
+        item.unexpected_behavior?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.coarse_cluster_label?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.fine_cluster_label?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
     setFilteredData(filtered);
-  }, [data, selectedCategory, selectedImpact, selectedType, selectedUnexpectedBehavior, searchTerm]);
+  }, [data, selectedCategory, selectedCoarseCluster, selectedFineCluster, selectedImpact, selectedType, selectedUnexpectedBehavior, searchTerm]);
 
   // Analytics calculations
   const categoryStats = data.reduce((acc, item) => {
     acc[item.category] = (acc[item.category] || 0) + 1;
     return acc;
   }, {});
+
+  const coarseClusterStats: Record<string, number> = data.reduce((acc, item) => {
+    if (item.coarse_cluster_label) {
+      acc[item.coarse_cluster_label] = (acc[item.coarse_cluster_label] || 0) + 1;
+    }
+    return acc;
+  }, {} as Record<string, number>);
+
+  const fineClusterStats: Record<string, number> = data.reduce((acc, item) => {
+    if (item.fine_cluster_label) {
+      acc[item.fine_cluster_label] = (acc[item.fine_cluster_label] || 0) + 1;
+    }
+    return acc;
+  }, {} as Record<string, number>);
 
   const impactStats: Record<string, number> = data.reduce((acc, item) => {
     acc[item.impact] = (acc[item.impact] || 0) + 1;
@@ -226,10 +256,38 @@ const ModelDifferenceAnalyzer = () => {
     item.unexpected_behavior && item.unexpected_behavior.toLowerCase() === 'true'
   ).length;
 
-  const chartData = Object.entries(categoryStats).map(([category, count]) => ({
-    category,
-    count
-  }));
+  const getChartData = () => {
+    switch (chartView) {
+      case 'coarse':
+        return Object.entries(coarseClusterStats).map(([label, count]) => ({
+          category: label,
+          count
+        }));
+      case 'fine':
+        return Object.entries(fineClusterStats).map(([label, count]) => ({
+          category: label,
+          count
+        }));
+      default:
+        return Object.entries(categoryStats).map(([category, count]) => ({
+          category,
+          count
+        }));
+    }
+  };
+
+  const chartData = getChartData();
+
+  const getChartTitle = () => {
+    switch (chartView) {
+      case 'coarse':
+        return 'Differences by Coarse Cluster';
+      case 'fine':
+        return 'Differences by Fine Cluster';
+      default:
+        return 'Differences by Category';
+    }
+  };
 
   const pieData = Object.entries(impactStats).map(([impact, count]) => ({
     name: impact,
@@ -313,7 +371,41 @@ const ModelDifferenceAnalyzer = () => {
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow-sm p-6 border">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Differences by Category</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">{getChartTitle()}</h3>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setChartView('coarse')}
+                  className={`px-3 py-1 text-sm rounded ${
+                    chartView === 'coarse' 
+                      ? 'bg-blue-500 text-white' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  Coarse
+                </button>
+                <button
+                  onClick={() => setChartView('fine')}
+                  className={`px-3 py-1 text-sm rounded ${
+                    chartView === 'fine' 
+                      ? 'bg-blue-500 text-white' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  Fine
+                </button>
+                <button
+                  onClick={() => setChartView('category')}
+                  className={`px-3 py-1 text-sm rounded ${
+                    chartView === 'category' 
+                      ? 'bg-blue-500 text-white' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  Category
+                </button>
+              </div>
+            </div>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -364,6 +456,32 @@ const ModelDifferenceAnalyzer = () => {
 
             <div className="flex items-center space-x-2">
               <Filter className="h-5 w-5 text-gray-400" />
+              <select
+                className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={selectedCoarseCluster}
+                onChange={(e) => setSelectedCoarseCluster(e.target.value)}
+              >
+                <option value="all">All Coarse Clusters</option>
+                {Object.keys(coarseClusterStats).map(cluster => (
+                  <option key={cluster} value={cluster}>{cluster}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <select
+                className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={selectedFineCluster}
+                onChange={(e) => setSelectedFineCluster(e.target.value)}
+              >
+                <option value="all">All Fine Clusters</option>
+                {Object.keys(fineClusterStats).map(cluster => (
+                  <option key={cluster} value={cluster}>{cluster}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center space-x-2">
               <select
                 className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 value={selectedCategory}
@@ -459,9 +577,27 @@ const ModelDifferenceAnalyzer = () => {
                         <div className="max-w-md">{item.difference}</div>
                       </td>
                       <td className="px-6 py-4 text-sm">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {item.category}
-                        </span>
+                        <div className="space-y-1">
+                          {item.coarse_cluster_label && (
+                            <div className="text-xs">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                {item.coarse_cluster_label}
+                              </span>
+                            </div>
+                          )}
+                          {item.fine_cluster_label && (
+                            <div className="text-xs">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                                {item.fine_cluster_label}
+                              </span>
+                            </div>
+                          )}
+                          <div>
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              {item.category}
+                            </span>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-sm">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
