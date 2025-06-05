@@ -160,12 +160,13 @@ const ModelDifferenceAnalyzer = () => {
       setError(null);
       
       console.log('Starting to load CSV file...');
-      const response = await fetch('/qwen2_mistral_small.csv');
+      // Use relative path that works with Vite's base configuration
+      const response = await fetch('./qwen2_mistral_small.csv');
       console.log('Fetch response:', response.status, response.ok);
       
       if (!response.ok) {
         console.log('Main CSV failed, trying example CSV...');
-        const fallbackResponse = await fetch('/example_differences.csv');
+        const fallbackResponse = await fetch('./example_differences.csv');
         if (!fallbackResponse.ok) {
           throw new Error(`Failed to fetch both CSV files: ${response.status}, ${fallbackResponse.status}`);
         }
@@ -342,16 +343,16 @@ const ModelDifferenceAnalyzer = () => {
         }));
       default:
         return Object.entries(stats.categoryStats).map(([category, count]) => ({
-          category,
-          count
-        }));
+    category,
+    count
+  }));
     }
   }, [chartView, stats]);
 
   const pieData = useMemo(() => 
     Object.entries(stats.impactStats).map(([impact, count]) => ({
-      name: impact,
-      value: count
+    name: impact,
+    value: count
     }))
   , [stats.impactStats]);
 
@@ -372,7 +373,7 @@ const ModelDifferenceAnalyzer = () => {
     Low: '#10b981'
   };
 
-  const toggleRowExpansion = (index) => {
+  const toggleRowExpansion = (index: number) => {
     const newExpanded = new Set(expandedRows);
     if (newExpanded.has(index)) {
       newExpanded.delete(index);
@@ -708,9 +709,9 @@ const ModelDifferenceAnalyzer = () => {
                             </div>
                           )}
                           <div>
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              {item.category}
-                            </span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {item.category}
+                        </span>
                           </div>
                         </div>
                       </td>
@@ -733,11 +734,11 @@ const ModelDifferenceAnalyzer = () => {
                       </td>
                       <td className="px-6 py-4 text-sm">
                         <div className="flex space-x-2">
-                          <button
-                            onClick={() => toggleRowExpansion(index)}
-                            className="flex items-center text-blue-600 hover:text-blue-800"
-                          >
-                            {expandedRows.has(index) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        <button
+                          onClick={() => toggleRowExpansion(index)}
+                          className="flex items-center text-blue-600 hover:text-blue-800"
+                        >
+                          {expandedRows.has(index) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                             <span className="ml-1">Details</span>
                           </button>
                           <button
@@ -746,7 +747,7 @@ const ModelDifferenceAnalyzer = () => {
                           >
                             <Eye className="h-4 w-4 mr-1" />
                             <span>Responses</span>
-                          </button>
+                        </button>
                         </div>
                       </td>
                     </tr>
