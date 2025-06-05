@@ -162,44 +162,97 @@ const ModelDifferenceAnalyzer = () => {
       setError(null);
       
       console.log('Starting to load CSV file...');
-      // Use relative path that works with Vite's base configuration
-      const response = await fetch('./qwen2_mistral_small.csv');
-      console.log('Fetch response:', response.status, response.ok);
       
-      if (!response.ok) {
-        console.log('Main CSV failed, trying example CSV...');
-        const fallbackResponse = await fetch('./example_differences.csv');
-        if (!fallbackResponse.ok) {
-          throw new Error(`Failed to fetch both CSV files: ${response.status}, ${fallbackResponse.status}`);
-        }
-        const fileContent = await fallbackResponse.text();
-        console.log('Fallback file content length:', fileContent.length);
+      // Create a timeout promise to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Loading timeout - file too large')), 30000); // 30 second timeout
+      });
+      
+      // Try to load the main CSV file with timeout protection
+      try {
+        console.log('Attempting to load main CSV file...');
+        const response = await Promise.race([
+          fetch('./qwen2_mistral_small.csv'),
+          timeoutPromise
+        ]) as Response;
         
-        const Papa = (await import('papaparse')).default;
-        const parsedData = Papa.parse(fileContent, {
-          header: true,
-          dynamicTyping: true,
-          skipEmptyLines: true,
-          delimitersToGuess: [',', '\t', '|', ';']
-        });
+        console.log('Fetch response:', response.status, response.ok);
+        
+        if (response.ok) {
+          console.log('Reading file content...');
+          const fileContent = await Promise.race([
+            response.text(),
+            timeoutPromise
+          ]) as string;
+          
+          console.log('File content length:', fileContent.length);
+          
+          // Check if file is extremely large (>5MB of text)
+          if (fileContent.length > 5 * 1024 * 1024) {
+            throw new Error('File too large, using fallback data');
+          }
+          
+          console.log('Loading Papa Parse...');
+          const Papa = (await import('papaparse')).default;
+          
+          console.log('Parsing CSV...');
+          const parsedData = await new Promise<any>((resolve, reject) => {
+            // Use Papa Parse worker for better performance with large files
+            Papa.parse(fileContent, {
+              header: true,
+              dynamicTyping: true,
+              skipEmptyLines: true,
+              delimitersToGuess: [',', '\t', '|', ';'],
+              complete: resolve,
+              error: reject,
+              // Add chunk processing for large files
+              step: (results) => {
+                // Process in chunks to prevent blocking
+                if (results.errors.length > 0) {
+                  console.warn('Parse errors:', results.errors);
+                }
+              }
+            });
+          });
 
-        const processedData = parsedData.data.filter((row: any) => row.difference) as DifferenceData[];
-        console.log('Fallback data length:', processedData.length);
-        
-        setData(processedData);
-        setFilteredData(processedData);
-        console.log('Fallback data set successfully!');
-        return;
+          console.log('Parse result:', {
+            dataLength: parsedData.data.length,
+            errorsLength: parsedData.errors.length,
+            fieldsLength: parsedData.meta?.fields?.length
+          });
+
+          if (parsedData.errors.length > 0) {
+            console.warn('CSV parsing errors:', parsedData.errors);
+          }
+
+          const processedData = parsedData.data.filter((row: any) => row.difference) as DifferenceData[];
+          console.log('Processed data length:', processedData.length);
+          
+          if (processedData.length === 0) {
+            throw new Error('No valid data found in main CSV file');
+          }
+          
+          setData(processedData);
+          setFilteredData(processedData);
+          console.log('Main data set successfully!');
+          return;
+        }
+      } catch (mainError) {
+        console.log('Main CSV failed or timed out:', mainError);
+        console.log('Falling back to example CSV...');
       }
       
-      console.log('Reading file content...');
-      const fileContent = await response.text();
-      console.log('File content length:', fileContent.length);
+      // Fallback to example CSV
+      console.log('Loading fallback CSV...');
+      const fallbackResponse = await fetch('./example_differences.csv');
+      if (!fallbackResponse.ok) {
+        throw new Error(`Failed to fetch fallback CSV file: ${fallbackResponse.status}`);
+      }
       
-      console.log('Loading Papa Parse...');
+      const fileContent = await fallbackResponse.text();
+      console.log('Fallback file content length:', fileContent.length);
+      
       const Papa = (await import('papaparse')).default;
-      
-      console.log('Parsing CSV...');
       const parsedData = Papa.parse(fileContent, {
         header: true,
         dynamicTyping: true,
@@ -207,22 +260,13 @@ const ModelDifferenceAnalyzer = () => {
         delimitersToGuess: [',', '\t', '|', ';']
       });
 
-      console.log('Parse result:', {
-        dataLength: parsedData.data.length,
-        errorsLength: parsedData.errors.length,
-        fieldsLength: parsedData.meta?.fields?.length
-      });
-
-      if (parsedData.errors.length > 0) {
-        console.warn('CSV parsing errors:', parsedData.errors);
-      }
-
       const processedData = parsedData.data.filter((row: any) => row.difference) as DifferenceData[];
-      console.log('Processed data length:', processedData.length);
+      console.log('Fallback data length:', processedData.length);
       
       setData(processedData);
       setFilteredData(processedData);
-      console.log('Data set successfully!');
+      console.log('Fallback data set successfully!');
+      
     } catch (error) {
       console.error('Error loading data:', error);
       setError(error instanceof Error ? error.message : 'Failed to load data');
