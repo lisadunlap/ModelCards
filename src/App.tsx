@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Search, Filter, ChevronDown, ChevronRight, Info, TrendingUp, Eye } from 'lucide-react';
+import { Search, Filter, ChevronDown, ChevronRight, Info, TrendingUp, Eye, X, ArrowLeft, Loader2 } from 'lucide-react';
 
 interface DifferenceData {
   difference: string;
@@ -144,6 +144,10 @@ const ModelDifferenceAnalyzer = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [chartView, setChartView] = useState<'coarse' | 'fine' | 'category'>('category');
+  const [selectedResponseItem, setSelectedResponseItem] = useState<DifferenceData | null>(null);
+  const [showResponsePanel, setShowResponsePanel] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Load and process data
   useEffect(() => {
@@ -152,10 +156,47 @@ const ModelDifferenceAnalyzer = () => {
 
   const loadData = async () => {
     try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('Starting to load CSV file...');
       const response = await fetch('/qwen2_mistral_small.csv');
+      console.log('Fetch response:', response.status, response.ok);
+      
+      if (!response.ok) {
+        console.log('Main CSV failed, trying example CSV...');
+        const fallbackResponse = await fetch('/example_differences.csv');
+        if (!fallbackResponse.ok) {
+          throw new Error(`Failed to fetch both CSV files: ${response.status}, ${fallbackResponse.status}`);
+        }
+        const fileContent = await fallbackResponse.text();
+        console.log('Fallback file content length:', fileContent.length);
+        
+        const Papa = (await import('papaparse')).default;
+        const parsedData = Papa.parse(fileContent, {
+          header: true,
+          dynamicTyping: true,
+          skipEmptyLines: true,
+          delimitersToGuess: [',', '\t', '|', ';']
+        });
+
+        const processedData = parsedData.data.filter((row: any) => row.difference) as DifferenceData[];
+        console.log('Fallback data length:', processedData.length);
+        
+        setData(processedData);
+        setFilteredData(processedData);
+        console.log('Fallback data set successfully!');
+        return;
+      }
+      
+      console.log('Reading file content...');
       const fileContent = await response.text();
+      console.log('File content length:', fileContent.length);
+      
+      console.log('Loading Papa Parse...');
       const Papa = (await import('papaparse')).default;
       
+      console.log('Parsing CSV...');
       const parsedData = Papa.parse(fileContent, {
         header: true,
         dynamicTyping: true,
@@ -163,15 +204,87 @@ const ModelDifferenceAnalyzer = () => {
         delimitersToGuess: [',', '\t', '|', ';']
       });
 
+      console.log('Parse result:', {
+        dataLength: parsedData.data.length,
+        errorsLength: parsedData.errors.length,
+        fieldsLength: parsedData.meta?.fields?.length
+      });
+
+      if (parsedData.errors.length > 0) {
+        console.warn('CSV parsing errors:', parsedData.errors);
+      }
+
       const processedData = parsedData.data.filter((row: any) => row.difference) as DifferenceData[];
+      console.log('Processed data length:', processedData.length);
+      
       setData(processedData);
       setFilteredData(processedData);
+      console.log('Data set successfully!');
     } catch (error) {
       console.error('Error loading data:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load data');
+    } finally {
+      setLoading(false);
+      console.log('Loading complete');
     }
   };
 
-  // Filter data based on selections
+  // Memoize expensive calculations
+  const stats = useMemo(() => {
+    const categoryStats = data.reduce((acc, item) => {
+      acc[item.category] = (acc[item.category] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const coarseClusterStats: Record<string, number> = data.reduce((acc, item) => {
+      if (item.coarse_cluster_label) {
+        acc[item.coarse_cluster_label] = (acc[item.coarse_cluster_label] || 0) + 1;
+      }
+      return acc;
+    }, {} as Record<string, number>);
+
+    const fineClusterStats: Record<string, number> = data.reduce((acc, item) => {
+      if (item.fine_cluster_label) {
+        acc[item.fine_cluster_label] = (acc[item.fine_cluster_label] || 0) + 1;
+      }
+      return acc;
+    }, {} as Record<string, number>);
+
+    const impactStats: Record<string, number> = data.reduce((acc, item) => {
+      acc[item.impact] = (acc[item.impact] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const typeStats: Record<string, number> = data.reduce((acc, item) => {
+      if (item.type) {
+        acc[item.type] = (acc[item.type] || 0) + 1;
+      }
+      return acc;
+    }, {} as Record<string, number>);
+
+    const unexpectedBehaviorStats: Record<string, number> = data.reduce((acc, item) => {
+      if (item.unexpected_behavior) {
+        acc[item.unexpected_behavior] = (acc[item.unexpected_behavior] || 0) + 1;
+      }
+      return acc;
+    }, {} as Record<string, number>);
+
+    const unexpectedBehaviorTrueCount = data.filter(item => 
+      item.unexpected_behavior && item.unexpected_behavior.toLowerCase() === 'true'
+    ).length;
+
+    return {
+      categoryStats,
+      coarseClusterStats,
+      fineClusterStats,
+      impactStats,
+      typeStats,
+      unexpectedBehaviorStats,
+      unexpectedBehaviorTrueCount
+    };
+  }, [data]);
+
+  // Filter data based on selections with memoization
   useEffect(() => {
     let filtered = data;
 
@@ -200,83 +313,47 @@ const ModelDifferenceAnalyzer = () => {
     }
 
     if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
       filtered = filtered.filter(item => 
-        item.difference?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.unexpected_behavior?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.coarse_cluster_label?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.fine_cluster_label?.toLowerCase().includes(searchTerm.toLowerCase())
+        item.difference?.toLowerCase().includes(searchLower) ||
+        item.reason?.toLowerCase().includes(searchLower) ||
+        item.unexpected_behavior?.toLowerCase().includes(searchLower) ||
+        item.category?.toLowerCase().includes(searchLower) ||
+        item.coarse_cluster_label?.toLowerCase().includes(searchLower) ||
+        item.fine_cluster_label?.toLowerCase().includes(searchLower)
       );
     }
 
     setFilteredData(filtered);
   }, [data, selectedCategory, selectedCoarseCluster, selectedFineCluster, selectedImpact, selectedType, selectedUnexpectedBehavior, searchTerm]);
 
-  // Analytics calculations
-  const categoryStats = data.reduce((acc, item) => {
-    acc[item.category] = (acc[item.category] || 0) + 1;
-    return acc;
-  }, {});
-
-  const coarseClusterStats: Record<string, number> = data.reduce((acc, item) => {
-    if (item.coarse_cluster_label) {
-      acc[item.coarse_cluster_label] = (acc[item.coarse_cluster_label] || 0) + 1;
-    }
-    return acc;
-  }, {} as Record<string, number>);
-
-  const fineClusterStats: Record<string, number> = data.reduce((acc, item) => {
-    if (item.fine_cluster_label) {
-      acc[item.fine_cluster_label] = (acc[item.fine_cluster_label] || 0) + 1;
-    }
-    return acc;
-  }, {} as Record<string, number>);
-
-  const impactStats: Record<string, number> = data.reduce((acc, item) => {
-    acc[item.impact] = (acc[item.impact] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const typeStats: Record<string, number> = data.reduce((acc, item) => {
-    if (item.type) {
-      acc[item.type] = (acc[item.type] || 0) + 1;
-    }
-    return acc;
-  }, {} as Record<string, number>);
-
-  const unexpectedBehaviorStats: Record<string, number> = data.reduce((acc, item) => {
-    if (item.unexpected_behavior) {
-      acc[item.unexpected_behavior] = (acc[item.unexpected_behavior] || 0) + 1;
-    }
-    return acc;
-  }, {} as Record<string, number>);
-
-  const unexpectedBehaviorTrueCount = data.filter(item => 
-    item.unexpected_behavior && item.unexpected_behavior.toLowerCase() === 'true'
-  ).length;
-
-  const getChartData = () => {
+  // Memoize chart data
+  const getChartData = useMemo(() => {
     switch (chartView) {
       case 'coarse':
-        return Object.entries(coarseClusterStats).map(([label, count]) => ({
+        return Object.entries(stats.coarseClusterStats).map(([label, count]) => ({
           category: label,
           count
         }));
       case 'fine':
-        return Object.entries(fineClusterStats).map(([label, count]) => ({
+        return Object.entries(stats.fineClusterStats).map(([label, count]) => ({
           category: label,
           count
         }));
       default:
-        return Object.entries(categoryStats).map(([category, count]) => ({
+        return Object.entries(stats.categoryStats).map(([category, count]) => ({
           category,
           count
         }));
     }
-  };
+  }, [chartView, stats]);
 
-  const chartData = getChartData();
+  const pieData = useMemo(() => 
+    Object.entries(stats.impactStats).map(([impact, count]) => ({
+      name: impact,
+      value: count
+    }))
+  , [stats.impactStats]);
 
   const getChartTitle = () => {
     switch (chartView) {
@@ -289,12 +366,7 @@ const ModelDifferenceAnalyzer = () => {
     }
   };
 
-  const pieData = Object.entries(impactStats).map(([impact, count]) => ({
-    name: impact,
-    value: count
-  }));
-
-  const COLORS = {
+  const COLORS: Record<string, string> = {
     High: '#ef4444',
     Medium: '#f59e0b',
     Low: '#10b981'
@@ -309,6 +381,49 @@ const ModelDifferenceAnalyzer = () => {
     }
     setExpandedRows(newExpanded);
   };
+
+  const openResponsePanel = (item: DifferenceData) => {
+    setSelectedResponseItem(item);
+    setShowResponsePanel(true);
+  };
+
+  const closeResponsePanel = () => {
+    setShowResponsePanel(false);
+    setSelectedResponseItem(null);
+  };
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading Data...</h2>
+          <p className="text-gray-600">Processing CSV file and building interface</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="bg-red-100 text-red-800 p-4 rounded-lg mb-4">
+            <h2 className="text-xl font-semibold mb-2">Error Loading Data</h2>
+            <p>{error}</p>
+          </div>
+          <button
+            onClick={loadData}
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -340,7 +455,7 @@ const ModelDifferenceAnalyzer = () => {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">High Impact</p>
-                <p className="text-2xl font-bold text-gray-900">{impactStats['High'] || 0}</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.impactStats['High'] || 0}</p>
               </div>
             </div>
           </div>
@@ -352,7 +467,7 @@ const ModelDifferenceAnalyzer = () => {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Unexpected Behavior</p>
-                <p className="text-2xl font-bold text-gray-900">{unexpectedBehaviorTrueCount}</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.unexpectedBehaviorTrueCount}</p>
               </div>
             </div>
           </div>
@@ -362,7 +477,7 @@ const ModelDifferenceAnalyzer = () => {
               <Eye className="h-8 w-8 text-purple-500" />
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Categories</p>
-                <p className="text-2xl font-bold text-gray-900">{Object.keys(categoryStats).length}</p>
+                <p className="text-2xl font-bold text-gray-900">{Object.keys(stats.categoryStats).length}</p>
               </div>
             </div>
           </div>
@@ -407,7 +522,7 @@ const ModelDifferenceAnalyzer = () => {
               </div>
             </div>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={chartData}>
+              <BarChart data={getChartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="category" angle={-45} textAnchor="end" height={100} />
                 <YAxis />
@@ -431,7 +546,7 @@ const ModelDifferenceAnalyzer = () => {
                   label={({ name, value }) => `${name}: ${value}`}
                 >
                   {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[entry.name]} />
+                    <Cell key={`cell-${index}`} fill={COLORS[entry.name] || '#6b7280'} />
                   ))}
                 </Pie>
                 <Tooltip />
@@ -462,7 +577,7 @@ const ModelDifferenceAnalyzer = () => {
                 onChange={(e) => setSelectedCoarseCluster(e.target.value)}
               >
                 <option value="all">All Coarse Clusters</option>
-                {Object.keys(coarseClusterStats).map(cluster => (
+                {Object.keys(stats.coarseClusterStats).map(cluster => (
                   <option key={cluster} value={cluster}>{cluster}</option>
                 ))}
               </select>
@@ -475,7 +590,7 @@ const ModelDifferenceAnalyzer = () => {
                 onChange={(e) => setSelectedFineCluster(e.target.value)}
               >
                 <option value="all">All Fine Clusters</option>
-                {Object.keys(fineClusterStats).map(cluster => (
+                {Object.keys(stats.fineClusterStats).map(cluster => (
                   <option key={cluster} value={cluster}>{cluster}</option>
                 ))}
               </select>
@@ -488,7 +603,7 @@ const ModelDifferenceAnalyzer = () => {
                 onChange={(e) => setSelectedCategory(e.target.value)}
               >
                 <option value="all">All Categories</option>
-                {Object.keys(categoryStats).map(category => (
+                {Object.keys(stats.categoryStats).map(category => (
                   <option key={category} value={category}>{category}</option>
                 ))}
               </select>
@@ -514,7 +629,7 @@ const ModelDifferenceAnalyzer = () => {
                 onChange={(e) => setSelectedType(e.target.value)}
               >
                 <option value="all">All Types</option>
-                {Object.keys(typeStats).map(type => (
+                {Object.keys(stats.typeStats).map(type => (
                   <option key={type} value={type}>{type}</option>
                 ))}
               </select>
@@ -527,7 +642,7 @@ const ModelDifferenceAnalyzer = () => {
                 onChange={(e) => setSelectedUnexpectedBehavior(e.target.value)}
               >
                 <option value="all">All Behaviors</option>
-                {Object.keys(unexpectedBehaviorStats).map(behavior => (
+                {Object.keys(stats.unexpectedBehaviorStats).map(behavior => (
                   <option key={behavior} value={behavior}>{behavior}</option>
                 ))}
               </select>
@@ -617,13 +732,22 @@ const ModelDifferenceAnalyzer = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm">
-                        <button
-                          onClick={() => toggleRowExpansion(index)}
-                          className="flex items-center text-blue-600 hover:text-blue-800"
-                        >
-                          {expandedRows.has(index) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                          <span className="ml-1">View Details</span>
-                        </button>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => toggleRowExpansion(index)}
+                            className="flex items-center text-blue-600 hover:text-blue-800"
+                          >
+                            {expandedRows.has(index) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            <span className="ml-1">Details</span>
+                          </button>
+                          <button
+                            onClick={() => openResponsePanel(item)}
+                            className="flex items-center text-purple-600 hover:text-purple-800 font-medium transition-colors"
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            <span>Responses</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                     {expandedRows.has(index) && (
@@ -656,29 +780,6 @@ const ModelDifferenceAnalyzer = () => {
                                 </div>
                               </div>
                             </div>
-
-                            <div className="mt-4">
-                              <details className="group">
-                                <summary className="cursor-pointer flex items-center text-blue-600 hover:text-blue-800 font-medium">
-                                  <ChevronRight className="h-4 w-4 group-open:rotate-90 transition-transform" />
-                                  <span className="ml-1">View Full Model Responses</span>
-                                </summary>
-                                <div className="mt-3 space-y-4">
-                                  <div>
-                                    <h5 className="font-medium text-gray-900 mb-2">Qwen2 Full Response</h5>
-                                    <div className="bg-blue-50 p-4 rounded border text-sm text-gray-700 max-h-60 overflow-y-auto">
-                                      <SimpleMarkdownRenderer content={item.model_1_response || ''} />
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <h5 className="font-medium text-gray-900 mb-2">Mistral Small Full Response</h5>
-                                    <div className="bg-purple-50 p-4 rounded border text-sm text-gray-700 max-h-60 overflow-y-auto">
-                                      <SimpleMarkdownRenderer content={item.model_2_response || ''} />
-                                    </div>
-                                  </div>
-                                </div>
-                              </details>
-                            </div>
                           </div>
                         </td>
                       </tr>
@@ -689,6 +790,161 @@ const ModelDifferenceAnalyzer = () => {
             </table>
           </div>
         </div>
+
+        {/* Model Responses Side Panel */}
+        {showResponsePanel && selectedResponseItem && (
+          <div className="fixed inset-0 z-50 flex">
+            {/* Background overlay */}
+            <div 
+              className="flex-1 bg-black bg-opacity-50 cursor-pointer"
+              onClick={closeResponsePanel}
+            />
+            
+            {/* Side panel */}
+            <div className="w-2/3 bg-white shadow-2xl flex flex-col h-full">
+              {/* Header */}
+              <div className="bg-gray-50 border-b border-gray-200 p-4 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <button
+                      onClick={closeResponsePanel}
+                      className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                    >
+                      <ArrowLeft className="h-5 w-5 text-gray-600" />
+                    </button>
+                    <h3 className="text-lg font-semibold text-gray-900">Analysis Details & Model Comparison</h3>
+                  </div>
+                  <button
+                    onClick={closeResponsePanel}
+                    className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                  >
+                    <X className="h-5 w-5 text-gray-600" />
+                  </button>
+                </div>
+                
+                {/* Context info */}
+                <div className="mt-3 space-y-2">
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">Difference:</span> {selectedResponseItem.difference}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedResponseItem.coarse_cluster_label && (
+                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                        {selectedResponseItem.coarse_cluster_label}
+                      </span>
+                    )}
+                    {selectedResponseItem.fine_cluster_label && (
+                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                        {selectedResponseItem.fine_cluster_label}
+                      </span>
+                    )}
+                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                      {selectedResponseItem.category}
+                    </span>
+                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                      selectedResponseItem.impact === 'High' ? 'bg-red-100 text-red-800' :
+                      selectedResponseItem.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-green-100 text-green-800'
+                    }`}>
+                      {selectedResponseItem.impact} Impact
+                    </span>
+                    {selectedResponseItem.unexpected_behavior && (
+                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                        {selectedResponseItem.unexpected_behavior}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto">
+                {/* Prompt */}
+                <div className="p-4 border-b border-gray-200 bg-gray-50">
+                  <h4 className="font-medium text-gray-900 mb-2">Prompt</h4>
+                  <div className="bg-white p-3 rounded border text-sm text-gray-700 italic">
+                    "{selectedResponseItem.prompt}"
+                  </div>
+                </div>
+
+                {/* Reason */}
+                {selectedResponseItem.reason && (
+                  <div className="p-4 border-b border-gray-200">
+                    <h4 className="font-medium text-gray-900 mb-2">Reason for Difference</h4>
+                    <p className="text-sm text-gray-700">{selectedResponseItem.reason}</p>
+                  </div>
+                )}
+
+                {/* Evidence Section */}
+                {(selectedResponseItem.a_evidence || selectedResponseItem.b_evidence) && (
+                  <div className="p-4 border-b border-gray-200">
+                    <h4 className="font-medium text-gray-900 mb-3">Evidence Comparison</h4>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {selectedResponseItem.a_evidence && (
+                        <div>
+                          <h5 className="font-medium text-gray-800 mb-2 flex items-center">
+                            <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
+                            Qwen2 Evidence
+                          </h5>
+                          <div className="bg-blue-50 p-3 rounded border text-sm text-gray-700">
+                            {selectedResponseItem.a_evidence}
+                          </div>
+                        </div>
+                      )}
+                      {selectedResponseItem.b_evidence && (
+                        <div>
+                          <h5 className="font-medium text-gray-800 mb-2 flex items-center">
+                            <div className="w-3 h-3 bg-purple-500 rounded-full mr-2"></div>
+                            Mistral Small Evidence
+                          </h5>
+                          <div className="bg-purple-50 p-3 rounded border text-sm text-gray-700">
+                            {selectedResponseItem.b_evidence}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Full Model Responses */}
+                <div className="p-4">
+                  <h4 className="font-medium text-gray-900 mb-4">Full Model Responses</h4>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    {/* Qwen2 Response */}
+                    <div className="flex flex-col">
+                      <div className="mb-3">
+                        <h5 className="font-medium text-gray-900 flex items-center">
+                          <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
+                          Qwen2 Full Response
+                        </h5>
+                      </div>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg overflow-hidden">
+                        <div className="p-4 max-h-96 overflow-y-auto">
+                          <SimpleMarkdownRenderer content={selectedResponseItem.model_1_response || ''} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Mistral Small Response */}
+                    <div className="flex flex-col">
+                      <div className="mb-3">
+                        <h5 className="font-medium text-gray-900 flex items-center">
+                          <div className="w-3 h-3 bg-purple-500 rounded-full mr-2"></div>
+                          Mistral Small Full Response
+                        </h5>
+                      </div>
+                      <div className="bg-purple-50 border border-purple-200 rounded-lg overflow-hidden">
+                        <div className="p-4 max-h-96 overflow-y-auto">
+                          <SimpleMarkdownRenderer content={selectedResponseItem.model_2_response || ''} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
