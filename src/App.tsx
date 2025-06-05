@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Search, Filter, ChevronDown, ChevronRight, Info, TrendingUp, Eye, X, ArrowLeft, Loader2 } from 'lucide-react';
+import { Search, Filter, ChevronDown, ChevronRight, Info, TrendingUp, Eye, X, ArrowLeft, Loader2, BarChart3 } from 'lucide-react';
+import InteractiveHierarchicalChart from './InteractiveHierarchicalChart';
 
 interface DifferenceData {
   difference: string;
@@ -148,6 +149,7 @@ const ModelDifferenceAnalyzer = () => {
   const [showResponsePanel, setShowResponsePanel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'experimental'>('overview');
 
   // Load and process data
   useEffect(() => {
@@ -433,364 +435,419 @@ const ModelDifferenceAnalyzer = () => {
         <div className="max-w-7xl mx-auto px-6 py-4">
           <h1 className="text-2xl font-bold text-gray-900">Model Difference Analysis</h1>
           <p className="text-gray-600 mt-1">Qwen2 vs Mistral Small Comparison</p>
+          
+          {/* Tab Navigation */}
+          <div className="mt-4 border-b border-gray-200">
+            <nav className="flex space-x-8">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === 'overview'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Overview & Analysis
+              </button>
+              <button
+                onClick={() => setActiveTab('experimental')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors flex items-center space-x-1 ${
+                  activeTab === 'experimental'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <BarChart3 className="h-4 w-4" />
+                <span>Interactive Drill-Down</span>
+                <span className="ml-1 px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
+                  Experimental
+                </span>
+              </button>
+            </nav>
+          </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6">
-        {/* Overview Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow-sm p-6 border">
-            <div className="flex items-center">
-              <TrendingUp className="h-8 w-8 text-blue-500" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Differences</p>
-                <p className="text-2xl font-bold text-gray-900">{data.length}</p>
+        {activeTab === 'overview' ? (
+          <>
+            {/* Overview Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+              <div className="bg-white rounded-lg shadow-sm p-6 border">
+                <div className="flex items-center">
+                  <TrendingUp className="h-8 w-8 text-blue-500" />
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-600">Total Differences</p>
+                    <p className="text-2xl font-bold text-gray-900">{data.length}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg shadow-sm p-6 border">
+                <div className="flex items-center">
+                  <div className="h-8 w-8 bg-red-100 rounded-full flex items-center justify-center">
+                    <div className="h-4 w-4 bg-red-500 rounded-full"></div>
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-600">High Impact</p>
+                    <p className="text-2xl font-bold text-gray-900">{stats.impactStats['High'] || 0}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow-sm p-6 border">
+                <div className="flex items-center">
+                  <div className="h-8 w-8 bg-orange-100 rounded-full flex items-center justify-center">
+                    <div className="h-4 w-4 bg-orange-500 rounded-full"></div>
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-600">Unexpected Behavior</p>
+                    <p className="text-2xl font-bold text-gray-900">{stats.unexpectedBehaviorTrueCount}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow-sm p-6 border">
+                <div className="flex items-center">
+                  <Eye className="h-8 w-8 text-purple-500" />
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-600">Categories</p>
+                    <p className="text-2xl font-bold text-gray-900">{Object.keys(stats.categoryStats).length}</p>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow-sm p-6 border">
-            <div className="flex items-center">
-              <div className="h-8 w-8 bg-red-100 rounded-full flex items-center justify-center">
-                <div className="h-4 w-4 bg-red-500 rounded-full"></div>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">High Impact</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.impactStats['High'] || 0}</p>
-              </div>
-            </div>
-          </div>
 
-          <div className="bg-white rounded-lg shadow-sm p-6 border">
-            <div className="flex items-center">
-              <div className="h-8 w-8 bg-orange-100 rounded-full flex items-center justify-center">
-                <div className="h-4 w-4 bg-orange-500 rounded-full"></div>
+            {/* Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              <div className="bg-white rounded-lg shadow-sm p-6 border">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">{getChartTitle()}</h3>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => setChartView('coarse')}
+                      className={`px-3 py-1 text-sm rounded ${
+                        chartView === 'coarse' 
+                          ? 'bg-blue-500 text-white' 
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      Coarse
+                    </button>
+                    <button
+                      onClick={() => setChartView('fine')}
+                      className={`px-3 py-1 text-sm rounded ${
+                        chartView === 'fine' 
+                          ? 'bg-blue-500 text-white' 
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      Fine
+                    </button>
+                    <button
+                      onClick={() => setChartView('category')}
+                      className={`px-3 py-1 text-sm rounded ${
+                        chartView === 'category' 
+                          ? 'bg-blue-500 text-white' 
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      Category
+                    </button>
+                  </div>
+                </div>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={getChartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="category" angle={-45} textAnchor="end" height={100} />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#3b82f6" />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Unexpected Behavior</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.unexpectedBehaviorTrueCount}</p>
-              </div>
-            </div>
-          </div>
 
-          <div className="bg-white rounded-lg shadow-sm p-6 border">
-            <div className="flex items-center">
-              <Eye className="h-8 w-8 text-purple-500" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Categories</p>
-                <p className="text-2xl font-bold text-gray-900">{Object.keys(stats.categoryStats).length}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow-sm p-6 border">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">{getChartTitle()}</h3>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setChartView('coarse')}
-                  className={`px-3 py-1 text-sm rounded ${
-                    chartView === 'coarse' 
-                      ? 'bg-blue-500 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Coarse
-                </button>
-                <button
-                  onClick={() => setChartView('fine')}
-                  className={`px-3 py-1 text-sm rounded ${
-                    chartView === 'fine' 
-                      ? 'bg-blue-500 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Fine
-                </button>
-                <button
-                  onClick={() => setChartView('category')}
-                  className={`px-3 py-1 text-sm rounded ${
-                    chartView === 'category' 
-                      ? 'bg-blue-500 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Category
-                </button>
+              <div className="bg-white rounded-lg shadow-sm p-6 border">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Impact Distribution</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                      label={({ name, value }) => `${name}: ${value}`}
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[entry.name] || '#6b7280'} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={getChartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="category" angle={-45} textAnchor="end" height={100} />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="#3b82f6" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
 
-          <div className="bg-white rounded-lg shadow-sm p-6 border">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Impact Distribution</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                  label={({ name, value }) => `${name}: ${value}`}
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[entry.name] || '#6b7280'} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+            {/* Filters */}
+            <div className="bg-white rounded-lg shadow-sm p-6 border mb-6">
+              <div className="flex flex-wrap gap-4 items-center">
+                <div className="flex items-center space-x-2">
+                  <Search className="h-5 w-5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search differences..."
+                    className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
 
-        {/* Filters */}
-        <div className="bg-white rounded-lg shadow-sm p-6 border mb-6">
-          <div className="flex flex-wrap gap-4 items-center">
-            <div className="flex items-center space-x-2">
-              <Search className="h-5 w-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search differences..."
-                className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+                <div className="flex items-center space-x-2">
+                  <Filter className="h-5 w-5 text-gray-400" />
+                  <select
+                    className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={selectedCoarseCluster}
+                    onChange={(e) => setSelectedCoarseCluster(e.target.value)}
+                  >
+                    <option value="all">All Coarse Clusters</option>
+                    {Object.keys(stats.coarseClusterStats).map(cluster => (
+                      <option key={cluster} value={cluster}>{cluster}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <select
+                    className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={selectedFineCluster}
+                    onChange={(e) => setSelectedFineCluster(e.target.value)}
+                  >
+                    <option value="all">All Fine Clusters</option>
+                    {Object.keys(stats.fineClusterStats).map(cluster => (
+                      <option key={cluster} value={cluster}>{cluster}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <select
+                    className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                  >
+                    <option value="all">All Categories</option>
+                    {Object.keys(stats.categoryStats).map(category => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <select
+                    className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={selectedImpact}
+                    onChange={(e) => setSelectedImpact(e.target.value)}
+                  >
+                    <option value="all">All Impact Levels</option>
+                    <option value="High">High Impact</option>
+                    <option value="Medium">Medium Impact</option>
+                    <option value="Low">Low Impact</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <select
+                    className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={selectedType}
+                    onChange={(e) => setSelectedType(e.target.value)}
+                  >
+                    <option value="all">All Types</option>
+                    {Object.keys(stats.typeStats).map(type => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <select
+                    className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={selectedUnexpectedBehavior}
+                    onChange={(e) => setSelectedUnexpectedBehavior(e.target.value)}
+                  >
+                    <option value="all">All Behaviors</option>
+                    {Object.keys(stats.unexpectedBehaviorStats).map(behavior => (
+                      <option key={behavior} value={behavior}>{behavior}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="text-sm text-gray-600">
+                  Showing {filteredData.length} of {data.length} differences
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <Filter className="h-5 w-5 text-gray-400" />
-              <select
-                className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={selectedCoarseCluster}
-                onChange={(e) => setSelectedCoarseCluster(e.target.value)}
-              >
-                <option value="all">All Coarse Clusters</option>
-                {Object.keys(stats.coarseClusterStats).map(cluster => (
-                  <option key={cluster} value={cluster}>{cluster}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <select
-                className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={selectedFineCluster}
-                onChange={(e) => setSelectedFineCluster(e.target.value)}
-              >
-                <option value="all">All Fine Clusters</option>
-                {Object.keys(stats.fineClusterStats).map(cluster => (
-                  <option key={cluster} value={cluster}>{cluster}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <select
-                className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-              >
-                <option value="all">All Categories</option>
-                {Object.keys(stats.categoryStats).map(category => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <select
-                className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={selectedImpact}
-                onChange={(e) => setSelectedImpact(e.target.value)}
-              >
-                <option value="all">All Impact Levels</option>
-                <option value="High">High Impact</option>
-                <option value="Medium">Medium Impact</option>
-                <option value="Low">Low Impact</option>
-              </select>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <select
-                className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-              >
-                <option value="all">All Types</option>
-                {Object.keys(stats.typeStats).map(type => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <select
-                className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={selectedUnexpectedBehavior}
-                onChange={(e) => setSelectedUnexpectedBehavior(e.target.value)}
-              >
-                <option value="all">All Behaviors</option>
-                {Object.keys(stats.unexpectedBehaviorStats).map(behavior => (
-                  <option key={behavior} value={behavior}>{behavior}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="text-sm text-gray-600">
-              Showing {filteredData.length} of {data.length} differences
-            </div>
-          </div>
-        </div>
-
-        {/* Detailed Table */}
-        <div className="bg-white rounded-lg shadow-sm border">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">Detailed Analysis</h3>
-          </div>
-          
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Difference
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Category
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Impact
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Unexpected Behavior
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Details
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredData.map((item, index) => (
-                  <React.Fragment key={index}>
-                    <tr className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        <div className="max-w-md">{item.difference}</div>
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        <div className="space-y-1">
-                          {item.coarse_cluster_label && (
-                            <div className="text-xs">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                                {item.coarse_cluster_label}
-                              </span>
-                            </div>
-                          )}
-                          {item.fine_cluster_label && (
-                            <div className="text-xs">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
-                                {item.fine_cluster_label}
-                              </span>
-                            </div>
-                          )}
-                          <div>
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {item.category}
-                        </span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          item.impact === 'High' ? 'bg-red-100 text-red-800' :
-                          item.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-green-100 text-green-800'
-                        }`}>
-                          {item.impact}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{item.type}</td>
-                      <td className="px-6 py-4 text-sm">
-                        {item.unexpected_behavior && (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                            {item.unexpected_behavior}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        <div className="flex space-x-2">
-                        <button
-                          onClick={() => toggleRowExpansion(index)}
-                          className="flex items-center text-blue-600 hover:text-blue-800"
-                        >
-                          {expandedRows.has(index) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                            <span className="ml-1">Details</span>
-                          </button>
-                          <button
-                            onClick={() => openResponsePanel(item)}
-                            className="flex items-center text-purple-600 hover:text-purple-800 font-medium transition-colors"
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            <span>Responses</span>
-                        </button>
-                        </div>
-                      </td>
+            {/* Detailed Table */}
+            <div className="bg-white rounded-lg shadow-sm border">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Detailed Analysis</h3>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Difference
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Category
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Impact
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Type
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Unexpected Behavior
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Details
+                      </th>
                     </tr>
-                    {expandedRows.has(index) && (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-4 bg-gray-50">
-                          <div className="space-y-4">
-                            <div>
-                              <h4 className="font-medium text-gray-900 mb-2">Prompt</h4>
-                              <div className="bg-white p-3 rounded border text-sm text-gray-700 italic">
-                                "{item.prompt}"
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredData.map((item, index) => (
+                      <React.Fragment key={index}>
+                        <tr className="hover:bg-gray-50">
+                          <td className="px-6 py-4 text-sm text-gray-900">
+                            <div className="max-w-md">{item.difference}</div>
+                          </td>
+                          <td className="px-6 py-4 text-sm">
+                            <div className="space-y-1">
+                              {item.coarse_cluster_label && (
+                                <div className="text-xs">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                    {item.coarse_cluster_label}
+                                  </span>
+                                </div>
+                              )}
+                              {item.fine_cluster_label && (
+                                <div className="text-xs">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                                    {item.fine_cluster_label}
+                                  </span>
+                                </div>
+                              )}
+                              <div>
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              {item.category}
+                            </span>
                               </div>
                             </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              item.impact === 'High' ? 'bg-red-100 text-red-800' :
+                              item.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-green-100 text-green-800'
+                            }`}>
+                              {item.impact}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500">{item.type}</td>
+                          <td className="px-6 py-4 text-sm">
+                            {item.unexpected_behavior && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                {item.unexpected_behavior}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-sm">
+                            <div className="flex space-x-2">
+                            <button
+                              onClick={() => toggleRowExpansion(index)}
+                              className="flex items-center text-blue-600 hover:text-blue-800"
+                            >
+                              {expandedRows.has(index) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                <span className="ml-1">Details</span>
+                              </button>
+                              <button
+                                onClick={() => openResponsePanel(item)}
+                                className="flex items-center text-purple-600 hover:text-purple-800 font-medium transition-colors"
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                <span>Responses</span>
+                            </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {expandedRows.has(index) && (
+                          <tr>
+                            <td colSpan={6} className="px-6 py-4 bg-gray-50">
+                              <div className="space-y-4">
+                                <div>
+                                  <h4 className="font-medium text-gray-900 mb-2">Prompt</h4>
+                                  <div className="bg-white p-3 rounded border text-sm text-gray-700 italic">
+                                    "{item.prompt}"
+                                  </div>
+                                </div>
 
-                            <div>
-                              <h4 className="font-medium text-gray-900 mb-2">Reason</h4>
-                              <p className="text-sm text-gray-700">{item.reason}</p>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                <h4 className="font-medium text-gray-900 mb-2">Qwen2 Evidence</h4>
-                                <div className="bg-white p-3 rounded border text-sm text-gray-700">
-                                  {item.a_evidence}
+                                <div>
+                                  <h4 className="font-medium text-gray-900 mb-2">Reason</h4>
+                                  <p className="text-sm text-gray-700">{item.reason}</p>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div>
+                                    <h4 className="font-medium text-gray-900 mb-2">Qwen2 Evidence</h4>
+                                    <div className="bg-white p-3 rounded border text-sm text-gray-700">
+                                      {item.a_evidence}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <h4 className="font-medium text-gray-900 mb-2">Mistral Small Evidence</h4>
+                                    <div className="bg-white p-3 rounded border text-sm text-gray-700">
+                                      {item.b_evidence}
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
-                              <div>
-                                <h4 className="font-medium text-gray-900 mb-2">Mistral Small Evidence</h4>
-                                <div className="bg-white p-3 rounded border text-sm text-gray-700">
-                                  {item.b_evidence}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        ) : (
+          /* Experimental Interactive Hierarchical Chart Tab */
+          <div className="space-y-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start space-x-3">
+                <Info className="h-5 w-5 text-blue-600 mt-0.5" />
+                <div>
+                  <h4 className="font-medium text-blue-900">Interactive Hierarchical Drill-Down</h4>
+                  <p className="text-sm text-blue-700 mt-1">
+                    Click on bars to drill down through the hierarchy: Coarse Clusters → Fine Clusters → Categories → Individual Data Items. 
+                    Use the breadcrumb navigation to move back up levels.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <InteractiveHierarchicalChart 
+              data={data} 
+              onViewResponse={openResponsePanel}
+            />
           </div>
-        </div>
+        )}
 
         {/* Model Responses Side Panel */}
         {showResponsePanel && selectedResponseItem && (
