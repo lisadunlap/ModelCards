@@ -192,7 +192,8 @@ const ModelDifferenceAnalyzer = () => {
       setError(null);
       
       console.log('Starting to load CSV file...');
-      const response = await fetch('./qwen2_mistral_small.csv');
+      // Use GitHub media URL for LFS files
+      const response = await fetch('https://media.githubusercontent.com/media/lisadunlap/ModelCards/main/public/qwen2_mistral_small.csv');
       console.log('Fetch response:', response.status, response.ok);
       
       if (!response.ok) {
@@ -245,7 +246,8 @@ const ModelDifferenceAnalyzer = () => {
       setPropertyError(null);
       
       console.log('Starting to load property CSV file...');
-      const response = await fetch('./all_one_sided_comparisons_clustered_2.csv');
+      // Use GitHub media URL for LFS files
+      const response = await fetch('https://media.githubusercontent.com/media/lisadunlap/ModelCards/main/public/all_one_sided_comparisons_clustered_2.csv');
       console.log('Property fetch response:', response.status, response.ok);
       
       if (!response.ok) {
