@@ -125,7 +125,28 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
 
   // Get unique model names from the data
   const modelNames = useMemo(() => {
-    const uniqueModels = Array.from(new Set(data.map(item => item.model)));
+    const uniqueModels = Array.from(new Set(data.map(item => item.model)))
+      .filter(model => {
+        // Filter out invalid model names
+        if (!model || typeof model !== 'string') return false;
+        
+        // Remove obviously invalid model names
+        const invalidNames = ['numm count', 'null', 'undefined', '', 'NaN'];
+        if (invalidNames.includes(model.toLowerCase().trim())) {
+          console.warn(`Filtering out invalid model name: "${model}"`);
+          return false;
+        }
+        
+        // Remove very short names that are likely errors
+        if (model.trim().length < 2) {
+          console.warn(`Filtering out too-short model name: "${model}"`);
+          return false;
+        }
+        
+        return true;
+      });
+    
+    console.log(`Found ${uniqueModels.length} valid model names:`, uniqueModels);
     return uniqueModels.sort();
   }, [data]);
 
@@ -241,49 +262,40 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
         return result;
       });
 
+    // Store total before filtering for comparison
+    const totalBeforeFilter = chartEntries.length;
+
     // Apply discrepancy filtering if enabled
     if (showDiscrepancyOnly && activeModels.length >= 2) {
       chartEntries = chartEntries.filter(entry => {
         // Get all model counts for this category
         const modelCounts = activeModels.map(model => entry[`${model}_count`] || 0);
         
-        // For all-models view, we want to be more selective about what constitutes a discrepancy
-        // Filter out zero counts to focus on models that actually have data in this category
+        // Remove zero counts for ratio calculation
         const nonZeroCounts = modelCounts.filter(count => count > 0);
         
-        // If fewer than 2 models have data in this category, skip it unless there's a huge imbalance
+        // Need at least 2 models with data to calculate discrepancy
         if (nonZeroCounts.length < 2) {
-          // Only show if one model has a lot of data while others have none
+          // Show entries where one model has significant data while others have none
           const maxCount = Math.max(...modelCounts);
-          const totalNonZero = nonZeroCounts.length;
-          const totalModels = activeModels.length;
-          
-          // For all-models view, require a higher threshold when most models have zero
-          if (viewMode === 'all-models') {
-            return maxCount >= 5 && totalNonZero === 1 && totalModels > 3;
-          } else {
-            return maxCount >= 3 && totalNonZero === 1;
-          }
+          return maxCount >= 3; // At least 3 items in one model
         }
         
-        // Calculate discrepancy among models that actually have data
+        // Calculate the ratio between highest and lowest counts
         const maxCount = Math.max(...nonZeroCounts);
         const minCount = Math.min(...nonZeroCounts);
-        const ratio = minCount === 0 ? Infinity : maxCount / minCount;
+        const ratio = maxCount / minCount;
         
-        // For all-models view, use a more strict threshold since there are many models
-        const effectiveThreshold = viewMode === 'all-models' ? 
-          Math.max(discrepancyThreshold, 3) : // Minimum 3x for all-models
+        // Use the threshold from the slider
+        const threshold = viewMode === 'all-models' ? 
+          Math.max(discrepancyThreshold, 2) : // Minimum 2x for all-models to avoid too strict filtering
           discrepancyThreshold;
         
-        // Additional criteria for all-models: require meaningful absolute differences
-        if (viewMode === 'all-models') {
-          const absoluteDifference = maxCount - minCount;
-          return ratio >= effectiveThreshold && absoluteDifference >= 3;
-        }
-        
-        return ratio >= discrepancyThreshold;
+        return ratio >= threshold;
       });
+      
+      // Add debugging info to help track filter effectiveness
+      console.log(`Discrepancy filter: ${totalBeforeFilter} -> ${chartEntries.length} categories (threshold: ${discrepancyThreshold})`);
     }
 
     return chartEntries.sort((a, b) => b.total_count - a.total_count);
@@ -633,7 +645,17 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
           <h3 className="text-lg font-semibold text-gray-900">Visualization Options</h3>
           <div className="text-sm text-gray-600">
             {modelNames.length} total models • {activeModels.length} showing
-            {showDiscrepancyOnly && ` • ${chartData.length} with discrepancies`}
+            {showDiscrepancyOnly ? (
+              <span className="ml-2 px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                Showing {chartData.length} categories with discrepancies ≥ {
+                  viewMode === 'all-models' ? 
+                    Math.max(discrepancyThreshold, 2) : 
+                    discrepancyThreshold
+                }x ratio
+              </span>
+            ) : (
+              <span> • {chartData.length} categories</span>
+            )}
           </div>
         </div>
         
@@ -715,7 +737,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                 <div>
                   <label className="block text-xs text-gray-600 mb-1">
                     {viewMode === 'all-models' ? 
-                      `Minimum ratio (higher/lower): ${Math.max(discrepancyThreshold, 3)}x (enhanced for all-models)` :
+                      `Minimum ratio (higher/lower): ${Math.max(discrepancyThreshold, 2)}x (enhanced for all-models)` :
                       `Minimum ratio (higher/lower): ${discrepancyThreshold}x`
                     }
                   </label>
