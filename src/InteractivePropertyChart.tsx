@@ -542,18 +542,26 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
   const canDrillDown = drillState.level !== 'category' || !drillState.category;
 
   // Custom tooltip for dual bar chart
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label, coordinate }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
+      
       return (
-        <div className="bg-white p-3 border border-gray-300 rounded shadow-lg">
-          <p className="font-medium">{label}</p>
+        <div 
+          className="bg-white p-3 border border-gray-300 rounded shadow-lg max-w-xs relative"
+          style={{
+            zIndex: 1000,
+            marginLeft: '20px', // Offset to the right to avoid covering bars
+            marginTop: '-10px'   // Slight upward offset
+          }}
+        >
+          <p className="font-medium text-sm mb-2">{label}</p>
           {activeModels.map((model, index) => (
             <p key={model} className="text-sm" style={{ color: modelColors[index] }}>
               {model}: {data[`${model}_count`]} items ({data[`${model}_percentage`]}%)
             </p>
           ))}
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-gray-600 mt-1 pt-1 border-t">
             Total: {data.total_count} items
           </p>
         </div>
@@ -902,7 +910,14 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                 tick={{ fontSize: 12 }}
               />
               <YAxis label={{ value: 'Count', angle: -90, position: 'insideLeft' }} />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip 
+                content={<CustomTooltip />} 
+                cursor={{ fill: 'rgba(0, 0, 0, 0.1)' }}
+                position={{ x: undefined, y: undefined }}
+                allowEscapeViewBox={{ x: true, y: true }}
+                offset={20}
+                wrapperStyle={{ pointerEvents: 'none' }}
+              />
               <Legend 
                 verticalAlign="top" 
                 height={60}
