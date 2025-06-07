@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Search, Filter, ChevronDown, ChevronRight, Info, TrendingUp, Eye, X, ArrowLeft, Loader2, BarChart3 } from 'lucide-react';
 import InteractiveHierarchicalChart from './InteractiveHierarchicalChart';
+import InteractivePropertyChart from './InteractivePropertyChart';
 
 interface DifferenceData {
   difference: string;
@@ -16,7 +17,32 @@ interface DifferenceData {
   b_evidence?: string;
   model_1_response?: string;
   model_2_response?: string;
+  model_1_name?: string;
+  model_2_name?: string;
   unexpected_behavior?: string;
+}
+
+interface PropertyData {
+  prompt: string;
+  model_1_response: string;
+  model_2_response: string;
+  model_1_name: string;
+  model_2_name: string;
+  differences: string;
+  parsed_differences: string;
+  parse_error?: string;
+  model: string;
+  property_description: string;
+  category: string;
+  evidence: string;
+  type: string;
+  reason: string;
+  impact: string;
+  unexpected_behavior?: string;
+  property_description_coarse_cluster_label: string;
+  property_description_fine_cluster_label: string;
+  property_description_coarse_cluster_id: number;
+  property_description_fine_cluster_id: number;
 }
 
 // Simple markdown renderer component
@@ -135,6 +161,7 @@ const processInlineMarkdown = (text: string): string => {
 
 const ModelDifferenceAnalyzer = () => {
   const [data, setData] = useState<DifferenceData[]>([]);
+  const [propertyData, setPropertyData] = useState<PropertyData[]>([]);
   const [filteredData, setFilteredData] = useState<DifferenceData[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedCoarseCluster, setSelectedCoarseCluster] = useState('all');
@@ -148,12 +175,15 @@ const ModelDifferenceAnalyzer = () => {
   const [selectedResponseItem, setSelectedResponseItem] = useState<DifferenceData | null>(null);
   const [showResponsePanel, setShowResponsePanel] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [propertyLoading, setPropertyLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'experimental'>('overview');
+  const [propertyError, setPropertyError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'experimental' | 'properties'>('overview');
 
   // Load and process data
   useEffect(() => {
     loadData();
+    loadPropertyData();
   }, []);
 
   const loadData = async () => {
@@ -206,6 +236,74 @@ const ModelDifferenceAnalyzer = () => {
     } finally {
       setLoading(false);
       console.log('Loading complete');
+    }
+  };
+
+  const loadPropertyData = async () => {
+    try {
+      setPropertyLoading(true);
+      setPropertyError(null);
+      
+      console.log('Starting to load property CSV file...');
+      const response = await fetch('./all_one_sided_comparisons_clustered_2.csv');
+      console.log('Property fetch response:', response.status, response.ok);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch property CSV file: ${response.status} ${response.statusText}`);
+      }
+      
+      console.log('Reading property file content...');
+      const fileContent = await response.text();
+      console.log('Property file content length:', fileContent.length);
+      
+      console.log('Loading Papa Parse for properties...');
+      const Papa = (await import('papaparse')).default;
+      
+      console.log('Parsing property CSV...');
+      const parsedData = Papa.parse(fileContent, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true,
+        delimitersToGuess: [',', '\t', '|', ';']
+      });
+
+      console.log('Property parse result:', {
+        dataLength: parsedData.data.length,
+        errorsLength: parsedData.errors.length,
+        fieldsLength: parsedData.meta?.fields?.length
+      });
+
+      if (parsedData.errors.length > 0) {
+        console.warn('Property CSV parsing errors:', parsedData.errors);
+      }
+
+      const processedData = parsedData.data.filter((row: any) => row.property_description) as PropertyData[];
+      console.log('Processed property data length:', processedData.length);
+      
+      if (processedData.length === 0) {
+        throw new Error('No valid property data found in CSV file');
+      }
+      
+      setPropertyData(processedData);
+      console.log('Property data set successfully!');
+    } catch (error) {
+      console.error('Error loading property data:', error);
+      
+      // Provide helpful error message for large file
+      let errorMessage = 'Failed to load property data';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('fetch') || error.name === 'TypeError') {
+          errorMessage = 'The property data file (447MB) is too large to load in the browser. Consider using a smaller subset of the data or processing it server-side.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      setPropertyError(errorMessage);
+    } finally {
+      setPropertyLoading(false);
+      console.log('Property loading complete');
     }
   };
 
@@ -266,30 +364,47 @@ const ModelDifferenceAnalyzer = () => {
 
   // Filter data based on selections with memoization
   useEffect(() => {
+    console.log('Filtering with:', {
+      selectedCategory,
+      selectedCoarseCluster,
+      selectedFineCluster,
+      selectedImpact,
+      selectedType,
+      selectedUnexpectedBehavior,
+      searchTerm
+    });
+    
     let filtered = data;
+    console.log('Starting with', data.length, 'items');
 
     if (selectedCategory !== 'all') {
       filtered = filtered.filter(item => item.category === selectedCategory);
+      console.log('After category filter:', filtered.length, 'items');
     }
 
     if (selectedCoarseCluster !== 'all') {
       filtered = filtered.filter(item => item.coarse_cluster_label === selectedCoarseCluster);
+      console.log('After coarse cluster filter:', filtered.length, 'items');
     }
 
     if (selectedFineCluster !== 'all') {
       filtered = filtered.filter(item => item.fine_cluster_label === selectedFineCluster);
+      console.log('After fine cluster filter:', filtered.length, 'items');
     }
 
     if (selectedImpact !== 'all') {
       filtered = filtered.filter(item => item.impact === selectedImpact);
+      console.log('After impact filter:', filtered.length, 'items');
     }
 
     if (selectedType !== 'all') {
       filtered = filtered.filter(item => item.type === selectedType);
+      console.log('After type filter:', filtered.length, 'items');
     }
 
     if (selectedUnexpectedBehavior !== 'all') {
       filtered = filtered.filter(item => item.unexpected_behavior === selectedUnexpectedBehavior);
+      console.log('After unexpected behavior filter:', filtered.length, 'items');
     }
 
     if (searchTerm) {
@@ -302,10 +417,30 @@ const ModelDifferenceAnalyzer = () => {
         item.coarse_cluster_label?.toLowerCase().includes(searchLower) ||
         item.fine_cluster_label?.toLowerCase().includes(searchLower)
       );
+      console.log('After search filter:', filtered.length, 'items');
     }
 
+    console.log('Final filtered data:', filtered.length, 'items');
     setFilteredData(filtered);
   }, [data, selectedCategory, selectedCoarseCluster, selectedFineCluster, selectedImpact, selectedType, selectedUnexpectedBehavior, searchTerm]);
+
+  // Handler functions for filter changes
+  const handleCategoryChange = (value: string) => {
+    console.log('Category changed to:', value);
+    setSelectedCategory(value);
+    // Reset dependent filters immediately
+    setSelectedCoarseCluster('all');
+    setSelectedFineCluster('all');
+    console.log('Reset coarse and fine clusters to "all"');
+  };
+
+  const handleCoarseClusterChange = (value: string) => {
+    console.log('Coarse cluster changed to:', value);
+    setSelectedCoarseCluster(value);
+    // Reset fine cluster when coarse cluster changes
+    setSelectedFineCluster('all');
+    console.log('Reset fine cluster to "all"');
+  };
 
   // Memoize chart data
   const getChartData = useMemo(() => {
@@ -438,6 +573,20 @@ const ModelDifferenceAnalyzer = () => {
                 <span>Interactive Drill-Down</span>
                 <span className="ml-1 px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
                   Experimental
+                </span>
+              </button>
+              <button
+                onClick={() => setActiveTab('properties')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors flex items-center space-x-1 ${
+                  activeTab === 'properties'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <BarChart3 className="h-4 w-4" />
+                <span>Model Properties</span>
+                <span className="ml-1 px-1.5 py-0.5 text-xs bg-green-100 text-green-800 rounded-full">
+                  New
                 </span>
               </button>
             </nav>
@@ -586,7 +735,7 @@ const ModelDifferenceAnalyzer = () => {
                   <select
                     className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={selectedCoarseCluster}
-                    onChange={(e) => setSelectedCoarseCluster(e.target.value)}
+                    onChange={(e) => handleCoarseClusterChange(e.target.value)}
                   >
                     <option value="all">All Coarse Clusters</option>
                     {Object.keys(stats.coarseClusterStats).map(cluster => (
@@ -612,7 +761,7 @@ const ModelDifferenceAnalyzer = () => {
                   <select
                     className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    onChange={(e) => handleCategoryChange(e.target.value)}
                   >
                     <option value="all">All Categories</option>
                     {Object.keys(stats.categoryStats).map(category => (
@@ -803,7 +952,7 @@ const ModelDifferenceAnalyzer = () => {
               </div>
             </div>
           </>
-        ) : (
+        ) : activeTab === 'experimental' ? (
           /* Experimental Interactive Hierarchical Chart Tab */
           <div className="space-y-6">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -823,6 +972,100 @@ const ModelDifferenceAnalyzer = () => {
               data={data} 
               onViewResponse={openResponsePanel}
             />
+          </div>
+        ) : (
+          /* Model Properties Dual Chart Tab */
+          <div className="space-y-6">
+            {propertyLoading ? (
+              <div className="flex items-center justify-center min-h-96">
+                <div className="flex items-center space-x-3">
+                  <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                  <span className="text-gray-600">Loading property data...</span>
+                </div>
+              </div>
+            ) : propertyError ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+                <div className="flex items-start space-x-3 mb-4">
+                  <div className="text-red-500">
+                    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-medium text-red-900">Error Loading Property Data</h4>
+                    <p className="text-sm text-red-700 mt-1">{propertyError}</p>
+                    
+                    {propertyError.includes('447MB') && (
+                      <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                        <h5 className="font-medium text-yellow-800 mb-2">💡 Suggested Solutions:</h5>
+                        <ul className="text-sm text-yellow-700 space-y-1 list-disc list-inside">
+                          <li>Use a smaller sample of the data (first 10K-50K rows)</li>
+                          <li>Process the data server-side and expose filtered results via API</li>
+                          <li>Split the large file into smaller chunks by category or model</li>
+                          <li>Consider using a database or data processing pipeline</li>
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex space-x-3">
+                  <button
+                    onClick={loadPropertyData}
+                    className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors text-sm"
+                  >
+                    Retry Loading
+                  </button>
+                  
+                  {propertyError.includes('447MB') && (
+                    <div className="text-sm text-gray-600 flex items-center">
+                      <span>For now, you can use the other tabs which work with the smaller dataset.</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="flex items-start space-x-3">
+                    <Info className="h-5 w-5 text-green-600 mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-green-900">Model Property Analysis</h4>
+                      <p className="text-sm text-green-700 mt-1">
+                        Compare property distributions between Qwen and Mistral models. Each bar shows the percentage of properties 
+                        belonging to each model within hierarchical clusters. Click bars to drill down through: 
+                        Coarse Clusters → Fine Clusters → Categories → Individual Properties.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <InteractivePropertyChart 
+                  data={propertyData} 
+                  onViewResponse={(item) => {
+                    // Convert PropertyData to DifferenceData format for the panel
+                    const convertedItem: DifferenceData = {
+                      difference: item.property_description,
+                      category: item.category,
+                      coarse_cluster_label: item.property_description_coarse_cluster_label,
+                      fine_cluster_label: item.property_description_fine_cluster_label,
+                      impact: item.impact,
+                      reason: item.reason,
+                      type: item.type,
+                      prompt: item.prompt,
+                      a_evidence: item.evidence,
+                      b_evidence: item.evidence,
+                      model_1_response: item.model_1_response,
+                      model_2_response: item.model_2_response,
+                      model_1_name: item.model_1_name,
+                      model_2_name: item.model_2_name,
+                      unexpected_behavior: item.unexpected_behavior
+                    };
+                    openResponsePanel(convertedItem);
+                  }}
+                />
+              </>
+            )}
           </div>
         )}
 
@@ -919,7 +1162,7 @@ const ModelDifferenceAnalyzer = () => {
                         <div>
                           <h5 className="font-medium text-gray-800 mb-2 flex items-center">
                             <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
-                            Qwen2 Evidence
+                            {selectedResponseItem.model_1_name || 'Model 1'} Evidence
                           </h5>
                           <div className="bg-blue-50 p-3 rounded border text-sm text-gray-700">
                             {selectedResponseItem.a_evidence}
@@ -930,7 +1173,7 @@ const ModelDifferenceAnalyzer = () => {
                         <div>
                           <h5 className="font-medium text-gray-800 mb-2 flex items-center">
                             <div className="w-3 h-3 bg-purple-500 rounded-full mr-2"></div>
-                            Mistral Small Evidence
+                            {selectedResponseItem.model_2_name || 'Model 2'} Evidence
                           </h5>
                           <div className="bg-purple-50 p-3 rounded border text-sm text-gray-700">
                             {selectedResponseItem.b_evidence}
@@ -945,12 +1188,12 @@ const ModelDifferenceAnalyzer = () => {
                 <div className="p-4">
                   <h4 className="font-medium text-gray-900 mb-4">Full Model Responses</h4>
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                    {/* Qwen2 Response */}
+                    {/* Model 1 Response */}
                     <div className="flex flex-col">
                       <div className="mb-3">
                         <h5 className="font-medium text-gray-900 flex items-center">
                           <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
-                          Qwen2 Full Response
+                          {selectedResponseItem.model_1_name || 'Model 1'} Full Response
                         </h5>
                       </div>
                       <div className="bg-blue-50 border border-blue-200 rounded-lg overflow-hidden">
@@ -960,12 +1203,12 @@ const ModelDifferenceAnalyzer = () => {
                       </div>
                     </div>
 
-                    {/* Mistral Small Response */}
+                    {/* Model 2 Response */}
                     <div className="flex flex-col">
                       <div className="mb-3">
                         <h5 className="font-medium text-gray-900 flex items-center">
                           <div className="w-3 h-3 bg-purple-500 rounded-full mr-2"></div>
-                          Mistral Small Full Response
+                          {selectedResponseItem.model_2_name || 'Model 2'} Full Response
                         </h5>
                       </div>
                       <div className="bg-purple-50 border border-purple-200 rounded-lg overflow-hidden">
