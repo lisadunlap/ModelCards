@@ -1,6 +1,13 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import { OpenAI } from 'openai';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { ChevronRight, ArrowLeft, Eye, Home, ChevronLeft, ChevronDown, Filter, BarChart3, Grid, Users, TrendingUp } from 'lucide-react';
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
+  dangerouslyAllowBrowser: true // Only use this for client-side applications
+});
 
 interface PropertyData {
   prompt: string;
@@ -626,6 +633,14 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     }
   }, [selectedModels.length, modelNames]);
 
+  const embedQuery = async (query: string): Promise<number[]> => {
+    const response = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: query,
+    });
+    return response.data[0].embedding;
+  };
+
   return (
     <div className="space-y-6">
       {/* Navigation */}
@@ -879,11 +894,11 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
           <div className="overflow-x-auto">
             <div className="inline-block min-w-full">
               {/* Heatmap Header */}
-              <div className="flex">
+              <div className="flex" style={{ height: '80px', alignItems: 'flex-end' }}>
                 <div className="w-48 flex-shrink-0"></div> {/* Empty corner */}
                 {modelNames.map(model => (
-                  <div key={model} className="w-24 text-center text-xs font-medium text-gray-700 p-2 transform -rotate-45 origin-bottom-left">
-                    <div className="whitespace-nowrap">{model}</div>
+                  <div key={model} className="w-24 text-center text-xs font-medium text-gray-700 p-2 transform -rotate-45 origin-bottom-left" style={{ height: '80px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                    <div className="whitespace-nowrap">{model.includes('_') ? model.split('_').slice(1).join('_') : model}</div>
                   </div>
                 ))}
               </div>
@@ -960,14 +975,14 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
             </div>
           </div>
           
-          <ResponsiveContainer width="100%" height={500}>
-            <BarChart data={chartData} margin={{ bottom: 140, top: 80 }}>
+          <ResponsiveContainer width="100%" height={600}>
+            <BarChart data={chartData} margin={{ bottom: 120, top: 20 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis 
                 dataKey="name" 
                 angle={-45}
                 textAnchor="end"
-                height={140}
+                height={120}
                 interval={0}
                 tick={{ fontSize: 12 }}
               />
@@ -984,7 +999,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                 verticalAlign="top" 
                 height={60}
                 iconType="rect"
-                wrapperStyle={{ paddingBottom: '20px' }}
+                wrapperStyle={{ paddingBottom: '20px', paddingTop: '5px' }}
               />
               {activeModels.map((model, index) => (
                 <Bar 
