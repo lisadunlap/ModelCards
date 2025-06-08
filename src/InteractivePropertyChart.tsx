@@ -30,13 +30,13 @@ interface InteractivePropertyChartProps {
   onViewResponse?: (item: PropertyData) => void;
 }
 
-type DrillLevel = 'coarse' | 'fine' | 'category';
+type DrillLevel = 'coarse' | 'fine' | 'property';
 
 interface DrillState {
   level: DrillLevel;
   coarseCluster?: string;
   fineCluster?: string;
-  category?: string;
+  property?: string;
 }
 
 type ViewMode = 'all-models' | 'selected-models' | 'heatmap' | 'top-models';
@@ -122,6 +122,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
   const [topModelCount, setTopModelCount] = useState(5);
   const [showDiscrepancyOnly, setShowDiscrepancyOnly] = useState(false);
   const [discrepancyThreshold, setDiscrepancyThreshold] = useState(2);
+  const [showUnexpectedOnly, setShowUnexpectedOnly] = useState(false);
 
   // Get unique model names from the data
   const modelNames = useMemo(() => {
@@ -168,7 +169,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       case 'all-models':
         return modelNames;
       case 'selected-models':
-        return selectedModels.length > 0 ? selectedModels : modelNames.slice(0, 3);
+        return selectedModels.length > 0 ? selectedModels : modelNames;
       case 'top-models':
         return topModels;
       case 'heatmap':
@@ -191,6 +192,14 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     }
     if (drillState.fineCluster) {
       filteredData = filteredData.filter(item => item.property_description_fine_cluster_label === drillState.fineCluster);
+    }
+
+    // Filter by unexpected behavior if enabled
+    if (showUnexpectedOnly) {
+      filteredData = filteredData.filter(item => 
+        item.unexpected_behavior && 
+        item.unexpected_behavior.toLowerCase() === 'true'
+      );
     }
 
     // Filter by active models only (except for heatmap view)
@@ -232,9 +241,9 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
           }
         });
         break;
-      case 'category':
+      case 'property':
         filteredData.forEach(item => {
-          const key = item.category;
+          const key = item.property_description;
           if (!groupedData[key]) {
             groupedData[key] = { total: 0 };
             activeModels.forEach(model => {
@@ -299,7 +308,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     }
 
     return chartEntries.sort((a, b) => b.total_count - a.total_count);
-  }, [data, drillState, activeModels, viewMode, showDiscrepancyOnly, discrepancyThreshold]);
+  }, [data, drillState, activeModels, viewMode, showDiscrepancyOnly, discrepancyThreshold, showUnexpectedOnly]);
 
   // Generate heatmap data for heatmap view
   const heatmapData = useMemo(() => {
@@ -313,6 +322,14 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       filteredData = filteredData.filter(item => item.property_description_fine_cluster_label === drillState.fineCluster);
     }
 
+    // Filter by unexpected behavior if enabled
+    if (showUnexpectedOnly) {
+      filteredData = filteredData.filter(item => 
+        item.unexpected_behavior && 
+        item.unexpected_behavior.toLowerCase() === 'true'
+      );
+    }
+
     const heatmapGrid: { category: string; model: string; count: number; percentage: number }[] = [];
     
     // Get categories based on drill level
@@ -322,8 +339,8 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
           return item.property_description_coarse_cluster_label;
         case 'fine':
           return item.property_description_fine_cluster_label;
-        case 'category':
-          return item.category;
+        case 'property':
+          return item.property_description;
         default:
           return item.property_description_coarse_cluster_label;
       }
@@ -336,8 +353,8 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
             return item.property_description_coarse_cluster_label === category;
           case 'fine':
             return item.property_description_fine_cluster_label === category;
-          case 'category':
-            return item.category === category;
+          case 'property':
+            return item.property_description === category;
           default:
             return item.property_description_coarse_cluster_label === category;
         }
@@ -359,7 +376,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     });
 
     return heatmapGrid;
-  }, [data, drillState, modelNames, viewMode]);
+  }, [data, drillState, modelNames, viewMode, showUnexpectedOnly]);
 
   // Get filtered data for the table view (memoized and with search)
   const filteredTableData = useMemo(() => {
@@ -371,8 +388,16 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     if (drillState.fineCluster) {
       filteredData = filteredData.filter(item => item.property_description_fine_cluster_label === drillState.fineCluster);
     }
-    if (drillState.category) {
-      filteredData = filteredData.filter(item => item.category === drillState.category);
+    if (drillState.property) {
+      filteredData = filteredData.filter(item => item.property_description === drillState.property);
+    }
+    
+    // Filter by unexpected behavior if enabled
+    if (showUnexpectedOnly) {
+      filteredData = filteredData.filter(item => 
+        item.unexpected_behavior && 
+        item.unexpected_behavior.toLowerCase() === 'true'
+      );
     }
     
     // Filter by active models (except in heatmap mode where we want to see all)
@@ -392,7 +417,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     }
     
     return filteredData;
-  }, [data, drillState, tableSearch, viewMode, activeModels]);
+  }, [data, drillState, tableSearch, viewMode, activeModels, showUnexpectedOnly]);
 
   // Paginated table data
   const paginatedTableData = useMemo(() => {
@@ -424,14 +449,14 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       case 'fine':
         setDrillState({
           ...drillState,
-          level: 'category',
+          level: 'property',
           fineCluster: clickedName
         });
         break;
-      case 'category':
+      case 'property':
         setDrillState({
           ...drillState,
-          category: clickedName
+          property: clickedName
         });
         break;
     }
@@ -443,10 +468,10 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       case 'fine':
         setDrillState({ level: 'coarse' });
         break;
-      case 'category':
-        if (drillState.category) {
+      case 'property':
+        if (drillState.property) {
           setDrillState({
-            level: 'category',
+            level: 'property',
             coarseCluster: drillState.coarseCluster,
             fineCluster: drillState.fineCluster
           });
@@ -489,16 +514,16 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
         return 'Coarse Property Clusters';
       case 'fine':
         return `Fine Property Clusters in "${drillState.coarseCluster}"`;
-      case 'category':
-        return `Categories in "${drillState.fineCluster}"`;
+      case 'property':
+        return `Properties in "${drillState.fineCluster}"`;
       default:
         return 'Unknown Level';
     }
   };
 
   const getTableTitle = () => {
-    if (drillState.category) {
-      return `Properties in "${drillState.coarseCluster}" → "${drillState.fineCluster}" → "${drillState.category}"`;
+    if (drillState.property) {
+      return `Properties in "${drillState.coarseCluster}" → "${drillState.fineCluster}" → "${drillState.property}"`;
     } else if (drillState.coarseCluster && drillState.fineCluster) {
       return `All properties in "${drillState.coarseCluster}" → "${drillState.fineCluster}"`;
     } else if (drillState.coarseCluster) {
@@ -522,28 +547,28 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       });
     }
     
-    if (drillState.fineCluster && !drillState.category) {
+    if (drillState.fineCluster && !drillState.property) {
       breadcrumbs.push({ 
         label: drillState.fineCluster, 
         onClick: () => setDrillState({ 
-          level: 'category', 
+          level: 'property', 
           coarseCluster: drillState.coarseCluster, 
           fineCluster: drillState.fineCluster 
         }) 
       });
     }
     
-    if (drillState.category) {
+    if (drillState.property) {
       breadcrumbs.push({ 
         label: drillState.fineCluster!, 
         onClick: () => setDrillState({ 
-          level: 'category', 
+          level: 'property', 
           coarseCluster: drillState.coarseCluster, 
           fineCluster: drillState.fineCluster 
         }) 
       });
       breadcrumbs.push({ 
-        label: drillState.category, 
+        label: drillState.property, 
         onClick: () => {} 
       });
     }
@@ -551,7 +576,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     return breadcrumbs;
   };
 
-  const canDrillDown = drillState.level !== 'category' || !drillState.category;
+  const canDrillDown = drillState.level !== 'property' || !drillState.property;
 
   // Custom tooltip for dual bar chart
   const CustomTooltip = ({ active, payload, label, coordinate }: any) => {
@@ -597,9 +622,9 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
     if (mode === 'selected-models' && selectedModels.length === 0) {
-      setSelectedModels(topModels.slice(0, 3)); // Default to top 3
+      setSelectedModels(modelNames); // Default to all models
     }
-  }, [selectedModels.length, topModels]);
+  }, [selectedModels.length, modelNames]);
 
   return (
     <div className="space-y-6">
@@ -655,6 +680,11 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
               </span>
             ) : (
               <span> • {chartData.length} categories</span>
+            )}
+            {showUnexpectedOnly && (
+              <span className="ml-2 px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">
+                Unexpected Behavior Only
+              </span>
             )}
           </div>
         </div>
@@ -719,10 +749,20 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
             <label className="block text-sm font-medium text-gray-700 mb-3">
               <div className="flex items-center space-x-2">
                 <TrendingUp className="h-4 w-4" />
-                <span>Discrepancy Filter</span>
+                <span>Advanced Filters</span>
               </div>
             </label>
             <div className="space-y-3">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={showUnexpectedOnly}
+                  onChange={(e) => setShowUnexpectedOnly(e.target.checked)}
+                  className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                />
+                <span className="text-sm text-gray-700">Show only unexpected behaviors</span>
+              </label>
+              
               <label className="flex items-center space-x-2">
                 <input
                   type="checkbox"

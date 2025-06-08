@@ -178,7 +178,7 @@ const ModelDifferenceAnalyzer = () => {
   const [propertyLoading, setPropertyLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [propertyError, setPropertyError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'experimental' | 'properties'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'experimental' | 'properties'>('properties');
 
   // Load and process data
   useEffect(() => {
@@ -247,7 +247,9 @@ const ModelDifferenceAnalyzer = () => {
       
       console.log('Starting to load property CSV file...');
       // Use GitHub media URL for LFS files
-      const response = await fetch('https://media.githubusercontent.com/media/lisadunlap/ModelCards/main/public/all_one_sided_comparisons_clustered_2.csv');
+      // const response = await fetch('https://media.githubusercontent.com/media/lisadunlap/ModelCards/main/public/all_one_sided_comparisons_clustered_hdbscan.csv');
+      // load local file
+      const response = await fetch('/all_one_sided_comparisons_clustered_4.csv');
       console.log('Property fetch response:', response.status, response.ok);
       
       if (!response.ok) {
@@ -547,8 +549,8 @@ const ModelDifferenceAnalyzer = () => {
       {/* Header */}
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">Model Difference Analysis</h1>
-          <p className="text-gray-600 mt-1">Qwen2 vs Mistral Small Comparison</p>
+          <h1 className="text-2xl font-bold text-gray-900">A whole lotta LLM comparisons</h1>
+          <p className="text-gray-600 mt-1">Come check it out, the vibes are immaculate</p>
           
           {/* Tab Navigation */}
           <div className="mt-4 border-b border-gray-200">
@@ -592,6 +594,59 @@ const ModelDifferenceAnalyzer = () => {
                 </span>
               </button>
             </nav>
+          </div>
+        </div>
+      </div>
+
+      {/* Introduction Section for New Visitors */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="bg-white rounded-lg shadow-sm p-6 border border-blue-200">
+            <div className="flex items-start space-x-4">
+              <div className="flex-shrink-0">
+                <div className="flex items-center justify-center h-12 w-12 rounded-md bg-blue-500 text-white">
+                  <Info className="h-6 w-6" />
+                </div>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-medium text-gray-900 mb-3">
+                  Welcome to the Model Comparison Dashboard
+                </h3>
+                <div className="text-sm text-gray-700 space-y-3">
+                  <p>
+                    <strong>What is this?</strong> This interactive dashboard compares the behavior and responses of multiple large language models across thousands of prompts and tasks. 
+                    It analyzes prompt-response pairs to identify differences, patterns, and unexpected behaviors between different AI models, helping you understand how various models approach similar problems.
+                  </p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                    <div className="bg-blue-50 p-3 rounded-lg">
+                      <h4 className="font-medium text-blue-900 mb-1">📊 Overview & Analysis</h4>
+                      <p className="text-xs text-blue-700">Browse categorized differences with detailed filtering, charts, and full model responses. Great for getting a broad understanding of model behaviors.</p>
+                    </div>
+                    
+                    <div className="bg-purple-50 p-3 rounded-lg">
+                      <h4 className="font-medium text-purple-900 mb-1">🔍 Interactive Drill-Down</h4>
+                      <p className="text-xs text-purple-700">Explore hierarchical clusters of differences. Click through coarse → fine clusters → categories → individual items for detailed analysis.</p>
+                    </div>
+                    
+                    <div className="bg-green-50 p-3 rounded-lg">
+                      <h4 className="font-medium text-green-900 mb-1">⚡ Model Properties</h4>
+                      <p className="text-xs text-green-700">
+                        <strong>Recommended for new users!</strong> Analyze model properties and behaviors across different categories. Shows which model exhibits specific traits more frequently.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <p className="text-sm text-yellow-800">
+                      <strong>💡 Getting Started:</strong> Start with the <strong>Model Properties</strong> tab (already selected) to explore how models differ across property descriptions. 
+                      Use the drill-down feature by clicking on chart bars to go deeper: Coarse Clusters → Fine Clusters → Individual Properties. 
+                      Click "View" buttons to see full model responses and detailed comparisons.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1158,31 +1213,53 @@ const ModelDifferenceAnalyzer = () => {
                 {/* Evidence Section */}
                 {(selectedResponseItem.a_evidence || selectedResponseItem.b_evidence) && (
                   <div className="p-4 border-b border-gray-200">
-                    <h4 className="font-medium text-gray-900 mb-3">Evidence Comparison</h4>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {selectedResponseItem.a_evidence && (
-                        <div>
-                          <h5 className="font-medium text-gray-800 mb-2 flex items-center">
-                            <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
-                            {selectedResponseItem.model_1_name || 'Model 1'} Evidence
-                          </h5>
-                          <div className="bg-blue-50 p-3 rounded border text-sm text-gray-700">
-                            {selectedResponseItem.a_evidence}
-                          </div>
+                    <h4 className="font-medium text-gray-900 mb-3">Evidence</h4>
+                    {/* Check if evidence is the same for both models */}
+                    {selectedResponseItem.a_evidence === selectedResponseItem.b_evidence ? (
+                      /* Show single evidence when it's the same */
+                      <div>
+                        <h5 className="font-medium text-gray-800 mb-2 flex items-center">
+                          <div className={`w-3 h-3 rounded-full mr-2 ${
+                            selectedResponseItem.model_1_name ? 'bg-blue-500' : 
+                            selectedResponseItem.model_2_name ? 'bg-yellow-500' : 
+                            'bg-gray-500'
+                          }`}></div>
+                          Evidence ({selectedResponseItem.model_1_name || selectedResponseItem.model_2_name || 'Shared'})
+                        </h5>
+                        <div className="bg-gray-50 p-3 rounded border text-sm text-gray-700">
+                          {selectedResponseItem.a_evidence || selectedResponseItem.b_evidence}
                         </div>
-                      )}
-                      {selectedResponseItem.b_evidence && (
-                        <div>
-                          <h5 className="font-medium text-gray-800 mb-2 flex items-center">
-                            <div className="w-3 h-3 bg-purple-500 rounded-full mr-2"></div>
-                            {selectedResponseItem.model_2_name || 'Model 2'} Evidence
-                          </h5>
-                          <div className="bg-purple-50 p-3 rounded border text-sm text-gray-700">
-                            {selectedResponseItem.b_evidence}
-                          </div>
+                      </div>
+                    ) : (
+                      /* Show separate evidence when different */
+                      <>
+                        <h4 className="font-medium text-gray-900 mb-3">Evidence Comparison</h4>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          {selectedResponseItem.a_evidence && (
+                            <div>
+                              <h5 className="font-medium text-gray-800 mb-2 flex items-center">
+                                <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
+                                {selectedResponseItem.model_1_name || 'Model 1'} Evidence
+                              </h5>
+                              <div className="bg-blue-50 p-3 rounded border text-sm text-gray-700">
+                                {selectedResponseItem.a_evidence}
+                              </div>
+                            </div>
+                          )}
+                          {selectedResponseItem.b_evidence && (
+                            <div>
+                              <h5 className="font-medium text-gray-800 mb-2 flex items-center">
+                                <div className="w-3 h-3 bg-yellow-500 rounded-full mr-2"></div>
+                                {selectedResponseItem.model_2_name || 'Model 2'} Evidence
+                              </h5>
+                              <div className="bg-yellow-50 p-3 rounded border text-sm text-gray-700">
+                                {selectedResponseItem.b_evidence}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -1209,11 +1286,11 @@ const ModelDifferenceAnalyzer = () => {
                     <div className="flex flex-col">
                       <div className="mb-3">
                         <h5 className="font-medium text-gray-900 flex items-center">
-                          <div className="w-3 h-3 bg-purple-500 rounded-full mr-2"></div>
+                          <div className="w-3 h-3 bg-yellow-500 rounded-full mr-2"></div>
                           {selectedResponseItem.model_2_name || 'Model 2'} Full Response
                         </h5>
                       </div>
-                      <div className="bg-purple-50 border border-purple-200 rounded-lg overflow-hidden">
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg overflow-hidden">
                         <div className="p-4 max-h-96 overflow-y-auto">
                           <SimpleMarkdownRenderer content={selectedResponseItem.model_2_response || ''} />
                         </div>
