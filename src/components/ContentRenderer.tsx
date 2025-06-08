@@ -12,12 +12,27 @@ interface ContentRendererProps {
 }
 
 const ContentRenderer: React.FC<ContentRendererProps> = ({ content, className }) => {
-  // Check if content contains LaTeX patterns
-  const hasLatex = content.includes('$') || content.includes('\\') || content.includes('\\frac') || content.includes('\\sum');
+  // Enhanced LaTeX pattern detection
+  const latexPatterns = [
+    /\$/,                    // Dollar signs for math
+    /\\[a-zA-Z]+/,          // LaTeX commands like \boxed, \frac, \sum, etc.
+    /\\{|\\}/,              // LaTeX braces
+    /\^{.*?}/,              // Superscripts
+    /_{.*?}/,               // Subscripts
+    /\\begin{.*?}/,         // LaTeX environments
+    /\\end{.*?}/,           // LaTeX environments
+  ];
+  
+  const hasLatex = latexPatterns.some(pattern => pattern.test(content));
   
   // Check if content contains markdown patterns
   const hasMarkdown = content.includes('```') || content.includes('**') || content.includes('*') || 
                      content.includes('#') || content.includes('[') || content.includes('|');
+
+  // Debug logging
+  console.log('ContentRenderer - Original content:', content);
+  console.log('ContentRenderer - Has LaTeX:', hasLatex);
+  console.log('ContentRenderer - Has Markdown:', hasMarkdown);
 
   // If no special formatting detected, render as plain text
   if (!hasLatex && !hasMarkdown) {
@@ -31,6 +46,35 @@ const ContentRenderer: React.FC<ContentRendererProps> = ({ content, className })
       </div>
     );
   }
+
+  // Preprocess content to handle LaTeX properly
+  let processedContent = content;
+  
+  // Simpler and more targeted LaTeX preprocessing
+  if (hasLatex) {
+    // First, handle already wrapped math expressions (don't double-wrap)
+    if (!content.includes('$')) {
+      // Handle \boxed{} specifically since that's causing issues
+      processedContent = processedContent.replace(
+        /\\boxed\{([^}]+)\}/g,
+        '$\\boxed{$1}$'
+      );
+      
+      // Handle other common LaTeX commands with arguments
+      processedContent = processedContent.replace(
+        /\\(frac|sqrt|overline|underline|hat|bar|vec|mathbf|mathit|mathrm|text)\{([^}]+)\}/g,
+        '$\\$1{$2}$'
+      );
+      
+      // Handle LaTeX commands with two arguments (like \frac{}{})
+      processedContent = processedContent.replace(
+        /\\frac\{([^}]+)\}\{([^}]+)\}/g,
+        '$\\frac{$1}{$2}$'
+      );
+    }
+  }
+
+  console.log('ContentRenderer - Processed content:', processedContent);
 
   return (
     <div className={`text-sm text-gray-700 bg-gray-50 p-3 rounded-md prose prose-sm max-w-none ${className || ''}`}>
@@ -109,7 +153,7 @@ const ContentRenderer: React.FC<ContentRendererProps> = ({ content, className })
           },
         }}
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );

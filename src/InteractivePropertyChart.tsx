@@ -130,6 +130,10 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
   const [showDiscrepancyOnly, setShowDiscrepancyOnly] = useState(false);
   const [discrepancyThreshold, setDiscrepancyThreshold] = useState(2);
   const [showUnexpectedOnly, setShowUnexpectedOnly] = useState(false);
+  
+  // Add state for group by prompt functionality
+  const [groupByPrompt, setGroupByPrompt] = useState(false);
+  const [expandedPrompts, setExpandedPrompts] = useState<Set<string>>(new Set());
 
   // Get unique model names from the data
   const modelNames = useMemo(() => {
@@ -466,6 +470,53 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     const endIndex = startIndex + itemsPerPage;
     return filteredTableData.slice(startIndex, endIndex);
   }, [filteredTableData, currentPage, itemsPerPage]);
+
+  // Process data for grouping by prompt
+  const groupedTableData = useMemo(() => {
+    if (!groupByPrompt) return null;
+    
+    const groups: Record<string, PropertyData[]> = {};
+    filteredTableData.forEach(item => {
+      const prompt = item.prompt || 'No Prompt';
+      if (!groups[prompt]) {
+        groups[prompt] = [];
+      }
+      groups[prompt].push(item);
+    });
+    
+    return Object.entries(groups)
+      .map(([prompt, items]) => ({
+        prompt,
+        items,
+        count: items.length
+      }))
+      .sort((a, b) => b.count - a.count); // Sort by count descending
+  }, [filteredTableData, groupByPrompt]);
+
+  // Handle prompt group expansion
+  const togglePromptExpansion = useCallback((prompt: string) => {
+    setExpandedPrompts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(prompt)) {
+        newSet.delete(prompt);
+      } else {
+        newSet.add(prompt);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Expand all prompts
+  const expandAllPrompts = useCallback(() => {
+    if (groupedTableData) {
+      setExpandedPrompts(new Set(groupedTableData.map(group => group.prompt)));
+    }
+  }, [groupedTableData]);
+
+  // Collapse all prompts
+  const collapseAllPrompts = useCallback(() => {
+    setExpandedPrompts(new Set());
+  }, []);
 
   // Calculate pagination info
   const totalPages = Math.ceil(filteredTableData.length / itemsPerPage);
@@ -1049,7 +1100,12 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={600}>
-              <BarChart data={chartData} margin={{ bottom: 120, top: 20 }}>
+              <BarChart 
+                data={chartData} 
+                margin={{ bottom: 120, top: 20 }}
+                barGap={1}
+                barCategoryGap={7}
+              >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis 
                   dataKey="name" 
@@ -1110,6 +1166,33 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                 value={tableSearch}
                 onChange={handleSearchChange}
               />
+              
+              <label className="flex items-center space-x-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={groupByPrompt}
+                  onChange={(e) => setGroupByPrompt(e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-gray-700">Group by Prompt</span>
+              </label>
+              
+              {groupByPrompt && groupedTableData && (
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={expandAllPrompts}
+                    className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                  >
+                    Expand All
+                  </button>
+                  <button
+                    onClick={collapseAllPrompts}
+                    className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                  >
+                    Collapse All
+                  </button>
+                </div>
+              )}
             </div>
             
             <div className="flex items-center space-x-4">
@@ -1162,75 +1245,170 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {paginatedTableData.map((item, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm text-gray-900">
-                    <div className="max-w-md">{item.property_description}</div>
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    <span 
-                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
-                      style={(() => {
-                        const modelIndex = activeModels.indexOf(item.model);
-                        if (modelIndex >= 0) {
-                          return getModelBadgeStyle(modelColors[modelIndex], modelIndex);
-                        }
-                        // Fallback for models not in active list (heatmap/all-models view)
-                        const allModelIndex = modelNames.indexOf(item.model);
-                        return getModelBadgeStyle('#6b7280', allModelIndex);
-                      })()}
+              {groupByPrompt && groupedTableData ? (
+                // Grouped view
+                groupedTableData.map((group) => (
+                  <React.Fragment key={group.prompt}>
+                    {/* Group header row */}
+                    <tr 
+                      className="bg-gray-50 hover:bg-gray-100 cursor-pointer"
+                      onClick={() => togglePromptExpansion(group.prompt)}
                     >
-                      {item.model}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    <div className="space-y-1">
-                      <div className="text-xs">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                          {item.property_description_coarse_cluster_label}
-                        </span>
-                      </div>
-                      <div className="text-xs">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
-                          {item.property_description_fine_cluster_label}
-                        </span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      {item.category}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      item.impact === 'High' ? 'bg-red-100 text-red-800' :
-                      item.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-green-100 text-green-800'
-                    }`}>
-                      {item.impact}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{item.type}</td>
-                  <td className="px-6 py-4 text-sm">
-                    {onViewResponse && (
-                      <button
-                        onClick={() => onViewResponse(item)}
-                        className="flex items-center text-purple-600 hover:text-purple-800 font-medium transition-colors"
+                      <td colSpan={7} className="px-6 py-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <ChevronRight 
+                              className={`h-4 w-4 transition-transform ${
+                                expandedPrompts.has(group.prompt) ? 'rotate-90' : ''
+                              }`}
+                            />
+                            <span className="font-medium text-gray-900">
+                              {group.prompt.length > 100 ? `${group.prompt.substring(0, 100)}...` : group.prompt}
+                            </span>
+                          </div>
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {group.count} {group.count === 1 ? 'property' : 'properties'}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    
+                    {/* Group items (when expanded) */}
+                    {expandedPrompts.has(group.prompt) && group.items.map((item, index) => (
+                      <tr key={`${group.prompt}-${index}`} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm text-gray-900">
+                          <div className="max-w-md">{item.property_description}</div>
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <span 
+                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                            style={(() => {
+                              const modelIndex = activeModels.indexOf(item.model);
+                              if (modelIndex >= 0) {
+                                return getModelBadgeStyle(modelColors[modelIndex], modelIndex);
+                              }
+                              const allModelIndex = modelNames.indexOf(item.model);
+                              return getModelBadgeStyle('#6b7280', allModelIndex);
+                            })()}
+                          >
+                            {item.model}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <div className="space-y-1">
+                            <div className="text-xs">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                {item.property_description_coarse_cluster_label}
+                              </span>
+                            </div>
+                            <div className="text-xs">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                                {item.property_description_fine_cluster_label}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            {item.category}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            item.impact === 'High' ? 'bg-red-100 text-red-800' :
+                            item.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {item.impact}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{item.type}</td>
+                        <td className="px-6 py-4 text-sm">
+                          {onViewResponse && (
+                            <button
+                              onClick={() => onViewResponse(item)}
+                              className="flex items-center text-purple-600 hover:text-purple-800 font-medium transition-colors"
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              <span>View</span>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                ))
+              ) : (
+                // Regular ungrouped view
+                paginatedTableData.map((item, index) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      <div className="max-w-md">{item.property_description}</div>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <span 
+                        className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                        style={(() => {
+                          const modelIndex = activeModels.indexOf(item.model);
+                          if (modelIndex >= 0) {
+                            return getModelBadgeStyle(modelColors[modelIndex], modelIndex);
+                          }
+                          const allModelIndex = modelNames.indexOf(item.model);
+                          return getModelBadgeStyle('#6b7280', allModelIndex);
+                        })()}
                       >
-                        <Eye className="h-4 w-4 mr-1" />
-                        <span>View</span>
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                        {item.model}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <div className="space-y-1">
+                        <div className="text-xs">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                            {item.property_description_coarse_cluster_label}
+                          </span>
+                        </div>
+                        <div className="text-xs">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                            {item.property_description_fine_cluster_label}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        {item.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        item.impact === 'High' ? 'bg-red-100 text-red-800' :
+                        item.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-green-100 text-green-800'
+                      }`}>
+                        {item.impact}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{item.type}</td>
+                    <td className="px-6 py-4 text-sm">
+                      {onViewResponse && (
+                        <button
+                          onClick={() => onViewResponse(item)}
+                          className="flex items-center text-purple-600 hover:text-purple-800 font-medium transition-colors"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          <span>View</span>
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
         
         {/* Pagination Controls */}
-        {totalPages > 1 && (
+        {!groupByPrompt && totalPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
             <div className="text-sm text-gray-600">
               Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems} items
@@ -1284,6 +1462,20 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                 Next
                 <ChevronRight className="h-4 w-4 ml-1" />
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Grouped view summary */}
+        {groupByPrompt && groupedTableData && (
+          <div className="px-6 py-4 border-t border-gray-200">
+            <div className="text-sm text-gray-600">
+              Showing {groupedTableData.length} unique prompts with {totalItems} total properties
+              {expandedPrompts.size > 0 && (
+                <span className="ml-2">
+                  • {expandedPrompts.size} prompt{expandedPrompts.size !== 1 ? 's' : ''} expanded
+                </span>
+              )}
             </div>
           </div>
         )}
