@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Search, Loader2, Eye, AlertCircle, Sparkles } from 'lucide-react';
 import { OpenAI } from 'openai';
+import { getCurrentDataSources } from './config/dataSources';
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -77,11 +78,13 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
   const loadCSVData = async () => {
     console.log('Loading CSV embedding data...');
     
+    const dataSources = getCurrentDataSources();
+    
     // Load the cleaned file with proper JSON embeddings
-    const response = await fetch('/embedding_sample.csv');
+    const response = await fetch(dataSources.embeddings);
     
     if (!response.ok) {
-      throw new Error(`Failed to fetch cleaned CSV file: ${response.status} ${response.statusText}. Please ensure the cleaned CSV file exists in the public directory.`);
+      throw new Error(`Failed to fetch embedding CSV file: ${response.status} ${response.statusText}. Path: ${dataSources.embeddings}. Please ensure the embedding CSV file exists in the public directory.`);
     }
     
     const fileContent = await response.text();

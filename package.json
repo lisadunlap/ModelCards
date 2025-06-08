@@ -12,9 +12,14 @@
     "openai": "^5.1.1",
     "papaparse": "^5.4.1",
     "parquet-wasm": "^0.6.1",
+    "prismjs": "^1.30.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "recharts": "^2.8.0"
+    "react-markdown": "^10.1.0",
+    "recharts": "^2.8.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
     "@types/papaparse": "^5.3.8",

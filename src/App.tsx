@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Users, GitCompare, Brain, Database } from 'lucide-react';
+import { BarChart3, Users, GitCompare, Brain, Database, X, Eye, ExternalLink } from 'lucide-react';
 import InteractiveHierarchicalChart from './InteractiveHierarchicalChart';
 import InteractivePropertyChart from './InteractivePropertyChart';
 import SemanticSearch from './SemanticSearch';
+import ContentRenderer from './components/ContentRenderer';
+import { getCurrentDataSources, validateDataSources, DATA_CONFIG } from './config/dataSources';
 
 interface DifferenceData {
   difference: string;
@@ -52,27 +54,36 @@ const ModelDifferenceAnalyzer = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedView, setSelectedView] = useState<string>('overview');
   const [loadingStatus, setLoadingStatus] = useState<string>('Starting...');
+  
+  // Add state for side panel
+  const [selectedItem, setSelectedItem] = useState<PropertyData | DifferenceData | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const loadDataSafely = async () => {
     try {
-      setLoadingStatus('Testing CSV file availability...');
+      setLoadingStatus('Validating data source configuration...');
       console.log('🔄 Starting data loading process');
       
+      // Validate data sources configuration
+      validateDataSources();
+      const dataSources = getCurrentDataSources();
+      console.log('📋 Using data sources:', dataSources);
+      
       // Test if CSV files are accessible
-      setLoadingStatus('Checking first CSV file...');
-      const response1 = await fetch('/qwen2_mistral_small.csv');
-      console.log('📁 First CSV response status:', response1.status, response1.statusText);
+      setLoadingStatus('Checking differences CSV file...');
+      const response1 = await fetch(dataSources.differences);
+      console.log('📁 Differences CSV response status:', response1.status, response1.statusText);
       
       if (!response1.ok) {
-        throw new Error(`First CSV file not accessible: ${response1.status} ${response1.statusText}`);
+        throw new Error(`Differences CSV file not accessible: ${response1.status} ${response1.statusText}. Path: ${dataSources.differences}`);
       }
       
-      setLoadingStatus('Checking second CSV file...');
-      const response2 = await fetch('/embedding_sample.csv');
-      console.log('📁 Second CSV response status:', response2.status, response2.statusText);
+      setLoadingStatus('Checking properties CSV file...');
+      const response2 = await fetch(dataSources.properties);
+      console.log('📁 Properties CSV response status:', response2.status, response2.statusText);
       
       if (!response2.ok) {
-        throw new Error(`Second CSV file not accessible: ${response2.status} ${response2.statusText}`);
+        throw new Error(`Properties CSV file not accessible: ${response2.status} ${response2.statusText}. Path: ${dataSources.properties}`);
       }
       
       // Load Papa Parse library
@@ -81,32 +92,34 @@ const ModelDifferenceAnalyzer = () => {
       const Papa = (await import('papaparse')).default;
       console.log('✅ Papa Parse loaded successfully');
       
-      // Load and parse first CSV with moderate preview
+      // Load and parse first CSV with complete dataset
       setLoadingStatus('Reading first CSV content...');
       console.log('📖 Reading first CSV content');
       const csvContent1 = await response1.text();
       console.log('📊 First CSV size:', csvContent1.length, 'characters');
       
-      setLoadingStatus('Parsing first CSV (expanded dataset)...');
-      console.log('🔍 Parsing first CSV with preview of 500 rows');
-      const parsedData1 = Papa.parse(csvContent1, {
+      setLoadingStatus('Parsing first CSV (complete dataset)...');
+      console.log('🔍 Parsing differences CSV with all rows');
+      const parseConfig1: any = {
         header: true,
-        dynamicTyping: true,
-        skipEmptyLines: true,
-        preview: 500  // Increased to 500 rows
-      });
+        dynamicTyping: DATA_CONFIG.ENABLE_DYNAMIC_TYPING,
+        skipEmptyLines: DATA_CONFIG.SKIP_EMPTY_LINES,
+      };
+      if (DATA_CONFIG.MAX_PREVIEW_ROWS) {
+        parseConfig1.preview = DATA_CONFIG.MAX_PREVIEW_ROWS;
+      }
+      const parsedData1 = Papa.parse<any>(csvContent1, parseConfig1);
       
-      console.log('📈 First CSV parsed. Rows found:', parsedData1.data.length);
-      console.log('🔍 First few rows sample:', parsedData1.data.slice(0, 3));
+      console.log('📈 First CSV parsed. Rows found:', parsedData1.data?.length || 0);
+      console.log('🔍 First few rows sample:', parsedData1.data?.slice(0, 3) || []);
       
       if (parsedData1.errors && parsedData1.errors.length > 0) {
         console.warn('⚠️ Parsing errors in first CSV:', parsedData1.errors);
       }
       
       setLoadingStatus('Processing first CSV data...');
-      const processedDifferences = parsedData1.data
+      const processedDifferences = (parsedData1.data || [])
         .filter((row: any) => row && row.difference)
-        .slice(0, 300)  // Increased to 300 items
         .map((row: any) => ({
           difference: row.difference || '',
           category: row.category || 'Unknown',
@@ -128,31 +141,33 @@ const ModelDifferenceAnalyzer = () => {
       console.log('✅ First CSV processed successfully. Final count:', processedDifferences.length);
       setData(processedDifferences);
       
-      // Load and parse second CSV
+      // Load and parse second CSV with complete dataset
       setLoadingStatus('Reading second CSV content...');
       console.log('📖 Reading second CSV content');
       const csvContent2 = await response2.text();
       console.log('📊 Second CSV size:', csvContent2.length, 'characters');
       
-      setLoadingStatus('Parsing second CSV (expanded dataset)...');
-      console.log('🔍 Parsing second CSV with preview of 500 rows');
-      const parsedData2 = Papa.parse(csvContent2, {
+      setLoadingStatus('Parsing second CSV (complete dataset)...');
+      console.log('🔍 Parsing properties CSV with all rows');
+      const parseConfig2: any = {
         header: true,
-        dynamicTyping: true,
-        skipEmptyLines: true,
-        preview: 500  // Increased to 500 rows
-      });
+        dynamicTyping: DATA_CONFIG.ENABLE_DYNAMIC_TYPING,
+        skipEmptyLines: DATA_CONFIG.SKIP_EMPTY_LINES,
+      };
+      if (DATA_CONFIG.MAX_PREVIEW_ROWS) {
+        parseConfig2.preview = DATA_CONFIG.MAX_PREVIEW_ROWS;
+      }
+      const parsedData2 = Papa.parse<any>(csvContent2, parseConfig2);
       
-      console.log('📈 Second CSV parsed. Rows found:', parsedData2.data.length);
+      console.log('📈 Second CSV parsed. Rows found:', parsedData2.data?.length || 0);
       
       if (parsedData2.errors && parsedData2.errors.length > 0) {
         console.warn('⚠️ Parsing errors in second CSV:', parsedData2.errors);
       }
       
       setLoadingStatus('Processing second CSV data...');
-      const processedProperties = parsedData2.data
+      const processedProperties = (parsedData2.data || [])
         .filter((row: any) => row && row.property_description)
-        .slice(0, 300)  // Increased to 300 items
         .map((row: any) => ({
           prompt: row.prompt || '',
           model_1_response: row.model_1_response || '',
@@ -255,6 +270,52 @@ const ModelDifferenceAnalyzer = () => {
     { id: 'search', label: 'Semantic Search', icon: Brain }
   ];
 
+  // Get data sources for display
+  const dataSources = getCurrentDataSources();
+
+  // Add handlers for viewing responses
+  const handleViewProperty = (item: PropertyData) => {
+    console.log('View property:', item);
+    setSelectedItem(item);
+    setSidebarOpen(true);
+  };
+
+  const handleViewDifference = (item: DifferenceData) => {
+    console.log('View difference:', item);
+    setSelectedItem(item);
+    setSidebarOpen(true);
+  };
+
+  const closeSidebar = () => {
+    setSidebarOpen(false);
+    setSelectedItem(null);
+  };
+
+  // Generate light background color for model identification
+  const getModelColor = (modelName: string): { backgroundColor: string; borderColor: string } => {
+    if (!modelName) return { backgroundColor: 'bg-gray-50', borderColor: 'border-gray-200' };
+    
+    // Simple hash function to consistently assign colors to model names
+    let hash = 0;
+    for (let i = 0; i < modelName.length; i++) {
+      hash = modelName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    // Predefined light color schemes for models
+    const colorSchemes = [
+      { backgroundColor: 'bg-blue-50', borderColor: 'border-blue-200' },
+      { backgroundColor: 'bg-green-50', borderColor: 'border-green-200' },
+      { backgroundColor: 'bg-purple-50', borderColor: 'border-purple-200' },
+      { backgroundColor: 'bg-orange-50', borderColor: 'border-orange-200' },
+      { backgroundColor: 'bg-pink-50', borderColor: 'border-pink-200' },
+      { backgroundColor: 'bg-indigo-50', borderColor: 'border-indigo-200' },
+      { backgroundColor: 'bg-teal-50', borderColor: 'border-teal-200' },
+      { backgroundColor: 'bg-cyan-50', borderColor: 'border-cyan-200' },
+    ];
+    
+    return colorSchemes[Math.abs(hash) % colorSchemes.length];
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -351,8 +412,8 @@ const ModelDifferenceAnalyzer = () => {
                     Your model comparison dashboard is now ready with real data from your CSV files.
                   </p>
                   <div className="text-sm">
-                    <p>• Loaded {data.length} model differences from qwen2_mistral_small.csv</p>
-                    <p>• Loaded {propertyData.length} properties from embedding_sample.csv</p>
+                    <p>• Loaded {data.length} model differences from {dataSources.differences}</p>
+                    <p>• Loaded {propertyData.length} properties from {dataSources.properties}</p>
                     <p>• All interactive charts and analysis tools are now available</p>
                     <p>• OpenAI semantic search is configured and ready</p>
                   </div>
@@ -364,14 +425,14 @@ const ModelDifferenceAnalyzer = () => {
           {selectedView === 'differences' && data.length > 0 && (
             <InteractiveHierarchicalChart 
               data={data} 
-              onViewResponse={item => console.log('View response:', item)} 
+              onViewResponse={handleViewDifference} 
             />
           )}
 
           {selectedView === 'properties' && propertyData.length > 0 && (
             <InteractivePropertyChart 
               data={propertyData} 
-              onViewResponse={item => console.log('View property:', item)} 
+              onViewResponse={handleViewProperty} 
             />
           )}
 
@@ -382,6 +443,333 @@ const ModelDifferenceAnalyzer = () => {
           )}
         </div>
       </div>
+
+      {/* Side Panel */}
+      {sidebarOpen && selectedItem && (
+        <div className="fixed inset-0 overflow-hidden z-50">
+          <div className="absolute inset-0 overflow-hidden">
+            {/* Backdrop */}
+            <div 
+              className="absolute inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+              onClick={closeSidebar}
+            ></div>
+            
+            {/* Panel */}
+            <section className="absolute inset-y-0 right-0 pl-10 max-w-full flex">
+              <div className="relative w-screen max-w-4xl">
+                <div className="h-full flex flex-col bg-white shadow-xl overflow-y-scroll">
+                  {/* Header */}
+                  <div className="px-4 py-6 bg-gray-50 sm:px-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center space-x-3">
+                        <Eye className="h-6 w-6 text-gray-400" />
+                        <h2 className="text-lg font-medium text-gray-900">
+                          {'property_description' in selectedItem ? 'Property Details' : 'Difference Details'}
+                        </h2>
+                      </div>
+                      <div className="ml-3 h-7 flex items-center">
+                        <button
+                          onClick={closeSidebar}
+                          className="bg-white rounded-md text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <span className="sr-only">Close panel</span>
+                          <X className="h-6 w-6" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 px-4 py-6 sm:px-6">
+                    <div className="space-y-6">
+                      {/* Property Details */}
+                      {'property_description' in selectedItem && (
+                        <>
+                          <div>
+                            <h3 className="text-sm font-medium text-gray-900 mb-2">Property Description</h3>
+                            <ContentRenderer content={selectedItem.property_description} />
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <h4 className="text-sm font-medium text-gray-900 mb-1">Model</h4>
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                {selectedItem.model}
+                              </span>
+                            </div>
+                            
+                            <div>
+                              <h4 className="text-sm font-medium text-gray-900 mb-1">Category</h4>
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                {selectedItem.category}
+                              </span>
+                            </div>
+                            
+                            <div>
+                              <h4 className="text-sm font-medium text-gray-900 mb-1">Impact</h4>
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                selectedItem.impact === 'High' ? 'bg-red-100 text-red-800' :
+                                selectedItem.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-green-100 text-green-800'
+                              }`}>
+                                {selectedItem.impact}
+                              </span>
+                            </div>
+
+                            {selectedItem.type && (
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-900 mb-1">Type</h4>
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                  {selectedItem.type}
+                                </span>
+                              </div>
+                            )}
+
+                            {selectedItem.unexpected_behavior && (
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-900 mb-1">Unexpected Behavior</h4>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  selectedItem.unexpected_behavior.toLowerCase() === 'true' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                                }`}>
+                                  {selectedItem.unexpected_behavior}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <h3 className="text-sm font-medium text-gray-900 mb-2">Cluster Hierarchy</h3>
+                            <div className="space-y-2">
+                              <div>
+                                <span className="text-xs text-gray-500">Coarse Cluster:</span>
+                                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                  {selectedItem.property_description_coarse_cluster_label}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-xs text-gray-500">Fine Cluster:</span>
+                                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                                  {selectedItem.property_description_fine_cluster_label}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {selectedItem.evidence && (
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence</h3>
+                              <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model).backgroundColor} ${getModelColor(selectedItem.model).borderColor}`}>
+                                <ContentRenderer content={selectedItem.evidence} className="!bg-transparent !p-0" />
+                              </div>
+                            </div>
+                          )}
+
+                          {selectedItem.reason && (
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-900 mb-2">Reason</h3>
+                              <ContentRenderer content={selectedItem.reason} />
+                            </div>
+                          )}
+
+                          {selectedItem.prompt && (
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-900 mb-2">Prompt</h3>
+                              <ContentRenderer content={selectedItem.prompt} />
+                            </div>
+                          )}
+
+                          {(selectedItem.model_1_response || selectedItem.model_2_response) && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {selectedItem.model_1_response && (
+                                <div>
+                                  <h3 className="text-sm font-medium text-gray-900 mb-2">
+                                    {selectedItem.model_1_name} Response
+                                  </h3>
+                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name).backgroundColor} ${getModelColor(selectedItem.model_1_name).borderColor}`}>
+                                    <ContentRenderer content={selectedItem.model_1_response} className="!bg-transparent !p-0" />
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {selectedItem.model_2_response && (
+                                <div>
+                                  <h3 className="text-sm font-medium text-gray-900 mb-2">
+                                    {selectedItem.model_2_name} Response
+                                  </h3>
+                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name).backgroundColor} ${getModelColor(selectedItem.model_2_name).borderColor}`}>
+                                    <ContentRenderer content={selectedItem.model_2_response} className="!bg-transparent !p-0" />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {selectedItem.differences && (
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-900 mb-2">Differences</h3>
+                              <ContentRenderer content={selectedItem.differences} />
+                            </div>
+                          )}
+
+                          {selectedItem.parsed_differences && (
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-900 mb-2">Parsed Differences</h3>
+                              <ContentRenderer content={selectedItem.parsed_differences} />
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Difference Details */}
+                      {'difference' in selectedItem && (
+                        <>
+                          <div>
+                            <h3 className="text-sm font-medium text-gray-900 mb-2">Difference</h3>
+                            <ContentRenderer content={selectedItem.difference} />
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <h4 className="text-sm font-medium text-gray-900 mb-1">Model</h4>
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                {selectedItem.model}
+                              </span>
+                            </div>
+                            
+                            <div>
+                              <h4 className="text-sm font-medium text-gray-900 mb-1">Category</h4>
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                {selectedItem.category}
+                              </span>
+                            </div>
+                            
+                            <div>
+                              <h4 className="text-sm font-medium text-gray-900 mb-1">Impact</h4>
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                selectedItem.impact === 'High' ? 'bg-red-100 text-red-800' :
+                                selectedItem.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-green-100 text-green-800'
+                              }`}>
+                                {selectedItem.impact}
+                              </span>
+                            </div>
+
+                            {selectedItem.type && (
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-900 mb-1">Type</h4>
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                  {selectedItem.type}
+                                </span>
+                              </div>
+                            )}
+
+                            {selectedItem.unexpected_behavior && (
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-900 mb-1">Unexpected Behavior</h4>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  selectedItem.unexpected_behavior.toLowerCase() === 'true' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                                }`}>
+                                  {selectedItem.unexpected_behavior}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {(selectedItem.coarse_cluster_label || selectedItem.fine_cluster_label) && (
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-900 mb-2">Cluster Hierarchy</h3>
+                              <div className="space-y-2">
+                                {selectedItem.coarse_cluster_label && (
+                                  <div>
+                                    <span className="text-xs text-gray-500">Coarse Cluster:</span>
+                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                      {selectedItem.coarse_cluster_label}
+                                    </span>
+                                  </div>
+                                )}
+                                {selectedItem.fine_cluster_label && (
+                                  <div>
+                                    <span className="text-xs text-gray-500">Fine Cluster:</span>
+                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                                      {selectedItem.fine_cluster_label}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {selectedItem.reason && (
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-900 mb-2">Reason</h3>
+                              <ContentRenderer content={selectedItem.reason} />
+                            </div>
+                          )}
+
+                          {selectedItem.prompt && (
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-900 mb-2">Prompt</h3>
+                              <ContentRenderer content={selectedItem.prompt} />
+                            </div>
+                          )}
+
+                          {(selectedItem.a_evidence || selectedItem.b_evidence) && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {selectedItem.a_evidence && (
+                                <div>
+                                  <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence A</h3>
+                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name || 'Model A').backgroundColor} ${getModelColor(selectedItem.model_1_name || 'Model A').borderColor}`}>
+                                    <ContentRenderer content={selectedItem.a_evidence} className="!bg-transparent !p-0" />
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {selectedItem.b_evidence && (
+                                <div>
+                                  <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence B</h3>
+                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name || 'Model B').backgroundColor} ${getModelColor(selectedItem.model_2_name || 'Model B').borderColor}`}>
+                                    <ContentRenderer content={selectedItem.b_evidence} className="!bg-transparent !p-0" />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {(selectedItem.model_1_response || selectedItem.model_2_response) && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {selectedItem.model_1_response && (
+                                <div>
+                                  <h3 className="text-sm font-medium text-gray-900 mb-2">
+                                    {selectedItem.model_1_name} Response
+                                  </h3>
+                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name).backgroundColor} ${getModelColor(selectedItem.model_1_name).borderColor}`}>
+                                    <ContentRenderer content={selectedItem.model_1_response} className="!bg-transparent !p-0" />
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {selectedItem.model_2_response && (
+                                <div>
+                                  <h3 className="text-sm font-medium text-gray-900 mb-2">
+                                    {selectedItem.model_2_name} Response
+                                  </h3>
+                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name).backgroundColor} ${getModelColor(selectedItem.model_2_name).borderColor}`}>
+                                    <ContentRenderer content={selectedItem.model_2_response} className="!bg-transparent !p-0" />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
