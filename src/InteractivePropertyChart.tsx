@@ -201,17 +201,24 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       filteredData = filteredData.filter(item => item.property_description_fine_cluster_label === drillState.fineCluster);
     }
 
+    // Debug logging for drill state
+    console.log('🔍 Drill State:', drillState);
+    console.log('📊 Filtered Data Count:', filteredData.length);
+    console.log('📊 Sample Filtered Data:', filteredData.slice(0, 3));
+
     // Filter by unexpected behavior if enabled
     if (showUnexpectedOnly) {
       filteredData = filteredData.filter(item => 
         item.unexpected_behavior && 
         item.unexpected_behavior.toLowerCase() === 'true'
       );
+      console.log('🚨 After unexpected filter:', filteredData.length);
     }
 
     // Filter by active models only (except for heatmap view)
     if (viewMode !== 'heatmap') {
       filteredData = filteredData.filter(item => activeModels.includes(item.model));
+      console.log('🎯 After model filter:', filteredData.length, 'activeModels:', activeModels);
     }
 
     // Group data based on current level and split by model
@@ -221,6 +228,10 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       case 'coarse':
         filteredData.forEach(item => {
           const key = item.property_description_coarse_cluster_label;
+          if (!key || key === 'Unknown' || key === '') {
+            console.warn('⚠️ Skipping item with empty/unknown coarse cluster:', item);
+            return;
+          }
           if (!groupedData[key]) {
             groupedData[key] = { total: 0 };
             activeModels.forEach(model => {
@@ -236,6 +247,10 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       case 'fine':
         filteredData.forEach(item => {
           const key = item.property_description_fine_cluster_label;
+          if (!key || key === 'Unknown' || key === '') {
+            console.warn('⚠️ Skipping item with empty/unknown fine cluster:', item);
+            return;
+          }
           if (!groupedData[key]) {
             groupedData[key] = { total: 0 };
             activeModels.forEach(model => {
@@ -251,6 +266,10 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       case 'property':
         filteredData.forEach(item => {
           const key = item.property_description;
+          if (!key || key === '') {
+            console.warn('⚠️ Skipping item with empty property description:', item);
+            return;
+          }
           if (!groupedData[key]) {
             groupedData[key] = { total: 0 };
             activeModels.forEach(model => {
@@ -277,6 +296,9 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
         
         return result;
       });
+
+    console.log('📈 Grouped Data Keys:', Object.keys(groupedData));
+    console.log('📈 Chart Entries Count:', chartEntries.length);
 
     // Store total before filtering for comparison
     const totalBeforeFilter = chartEntries.length;
@@ -314,7 +336,19 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       console.log(`Discrepancy filter: ${totalBeforeFilter} -> ${chartEntries.length} categories (threshold: ${discrepancyThreshold})`);
     }
 
-    return chartEntries.sort((a, b) => b.total_count - a.total_count);
+    const finalData = chartEntries.sort((a, b) => b.total_count - a.total_count);
+    console.log('📊 Final Chart Data:', finalData.length, 'items');
+    
+    // If we have no data, log a warning
+    if (finalData.length === 0) {
+      console.warn('⚠️ No chart data generated! Check filters and data structure.');
+      console.warn('Current drill state:', drillState);
+      console.warn('Active models:', activeModels);
+      console.warn('Original data count:', data.length);
+      console.warn('Filtered data count:', filteredData.length);
+    }
+    
+    return finalData;
   }, [data, drillState, activeModels, viewMode, showDiscrepancyOnly, discrepancyThreshold, showUnexpectedOnly]);
 
   // Generate heatmap data for heatmap view
@@ -891,79 +925,93 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
             </div>
           </div>
           
-          <div className="overflow-x-auto">
-            <div className="inline-block min-w-full">
-              {/* Heatmap Header */}
-              <div className="flex" style={{ height: '80px', alignItems: 'flex-end' }}>
-                <div className="w-48 flex-shrink-0"></div> {/* Empty corner */}
-                {modelNames.map(model => (
-                  <div key={model} className="w-24 text-center text-xs font-medium text-gray-700 p-2 transform -rotate-45 origin-bottom-left" style={{ height: '80px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    <div className="whitespace-nowrap">{model.includes('_') ? model.split('_').slice(1).join('_') : model}</div>
+          {heatmapData.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-gray-500">
+                <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <h3 className="text-lg font-medium mb-2">No Data Available</h3>
+                <p className="text-sm">
+                  No data matches the current filters and drill-down selection.
+                  <br />
+                  Try adjusting your filters or navigate back to a higher level.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="inline-block min-w-full">
+                {/* Heatmap Header */}
+                <div className="flex" style={{ height: '80px', alignItems: 'flex-end' }}>
+                  <div className="w-48 flex-shrink-0"></div> {/* Empty corner */}
+                  {modelNames.map(model => (
+                    <div key={model} className="w-24 text-center text-xs font-medium text-gray-700 p-2 transform -rotate-45 origin-bottom-left" style={{ height: '80px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                      <div className="whitespace-nowrap">{model.includes('_') ? model.split('_').slice(1).join('_') : model}</div>
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Heatmap Body */}
+                {Array.from(new Set(heatmapData.map(item => item.category))).map(category => (
+                  <div key={category} className="flex items-center">
+                    <div className="w-48 flex-shrink-0 text-sm text-gray-900 p-2 text-right border-r">
+                      <button
+                        onClick={() => canDrillDown && handleBarClick({ name: category })}
+                        className={`text-left truncate w-full ${canDrillDown ? 'hover:text-blue-600 cursor-pointer' : ''}`}
+                        title={category}
+                      >
+                        {category}
+                      </button>
+                    </div>
+                    {modelNames.map(model => {
+                      const cellData = heatmapData.find(item => item.category === category && item.model === model);
+                      const intensity = cellData ? cellData.percentage : 0;
+                      const count = cellData ? cellData.count : 0;
+                      
+                      return (
+                        <div
+                          key={`${category}-${model}`}
+                          className="w-24 h-12 border border-gray-200 flex items-center justify-center text-xs"
+                          style={{
+                            backgroundColor: intensity > 0 ? `rgba(59, 130, 246, ${Math.min(intensity / 100, 0.8)})` : '#f9fafb',
+                            color: intensity > 50 ? 'white' : '#374151'
+                          }}
+                          title={`${model} in ${category}: ${count} items (${intensity.toFixed(1)}%)`}
+                        >
+                          {count > 0 && (
+                            <div className="text-center">
+                              <div className="font-medium">{count}</div>
+                              <div className="text-xs opacity-75">{intensity.toFixed(0)}%</div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 ))}
-              </div>
-              
-              {/* Heatmap Body */}
-              {Array.from(new Set(heatmapData.map(item => item.category))).map(category => (
-                <div key={category} className="flex items-center">
-                  <div className="w-48 flex-shrink-0 text-sm text-gray-900 p-2 text-right border-r">
-                    <button
-                      onClick={() => canDrillDown && handleBarClick({ name: category })}
-                      className={`text-left truncate w-full ${canDrillDown ? 'hover:text-blue-600 cursor-pointer' : ''}`}
-                      title={category}
-                    >
-                      {category}
-                    </button>
+                
+                {/* Legend */}
+                <div className="mt-4 flex items-center justify-center space-x-4 text-sm text-gray-600">
+                  <span>Legend:</span>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 bg-gray-100 border"></div>
+                    <span>0%</span>
                   </div>
-                  {modelNames.map(model => {
-                    const cellData = heatmapData.find(item => item.category === category && item.model === model);
-                    const intensity = cellData ? cellData.percentage : 0;
-                    const count = cellData ? cellData.count : 0;
-                    
-                    return (
-                      <div
-                        key={`${category}-${model}`}
-                        className="w-24 h-12 border border-gray-200 flex items-center justify-center text-xs"
-                        style={{
-                          backgroundColor: intensity > 0 ? `rgba(59, 130, 246, ${Math.min(intensity / 100, 0.8)})` : '#f9fafb',
-                          color: intensity > 50 ? 'white' : '#374151'
-                        }}
-                        title={`${model} in ${category}: ${count} items (${intensity.toFixed(1)}%)`}
-                      >
-                        {count > 0 && (
-                          <div className="text-center">
-                            <div className="font-medium">{count}</div>
-                            <div className="text-xs opacity-75">{intensity.toFixed(0)}%</div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-              
-              {/* Legend */}
-              <div className="mt-4 flex items-center justify-center space-x-4 text-sm text-gray-600">
-                <span>Legend:</span>
-                <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 bg-gray-100 border"></div>
-                  <span>0%</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 border" style={{ backgroundColor: 'rgba(59, 130, 246, 0.3)' }}></div>
-                  <span>30%</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 border" style={{ backgroundColor: 'rgba(59, 130, 246, 0.6)' }}></div>
-                  <span>60%</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 border" style={{ backgroundColor: 'rgba(59, 130, 246, 0.8)' }}></div>
-                  <span>80%+</span>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 border" style={{ backgroundColor: 'rgba(59, 130, 246, 0.3)' }}></div>
+                    <span>30%</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 border" style={{ backgroundColor: 'rgba(59, 130, 246, 0.6)' }}></div>
+                    <span>60%</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 border" style={{ backgroundColor: 'rgba(59, 130, 246, 0.8)' }}></div>
+                    <span>80%+</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       ) : (
         /* Bar Chart Visualization */
@@ -975,44 +1023,70 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
             </div>
           </div>
           
-          <ResponsiveContainer width="100%" height={600}>
-            <BarChart data={chartData} margin={{ bottom: 120, top: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis 
-                dataKey="name" 
-                angle={-45}
-                textAnchor="end"
-                height={120}
-                interval={0}
-                tick={{ fontSize: 12 }}
-              />
-              <YAxis label={{ value: 'Count', angle: -90, position: 'insideLeft' }} />
-              <Tooltip 
-                content={<CustomTooltip />} 
-                cursor={{ fill: 'rgba(0, 0, 0, 0.1)' }}
-                position={{ x: undefined, y: undefined }}
-                allowEscapeViewBox={{ x: true, y: true }}
-                offset={20}
-                wrapperStyle={{ pointerEvents: 'none' }}
-              />
-              <Legend 
-                verticalAlign="top" 
-                height={60}
-                iconType="rect"
-                wrapperStyle={{ paddingBottom: '20px', paddingTop: '5px' }}
-              />
-              {activeModels.map((model, index) => (
-                <Bar 
-                  key={model}
-                  dataKey={`${model}_count`}
-                  name={model}
-                  fill={modelColors[index]} 
-                  cursor={canDrillDown ? "pointer" : "default"}
-                  onClick={canDrillDown ? handleBarClick : undefined}
+          {chartData.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-gray-500">
+                <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <h3 className="text-lg font-medium mb-2">No Data Available</h3>
+                <p className="text-sm mb-4">
+                  No data matches the current filters and drill-down selection.
+                  <br />
+                  Try adjusting your filters or navigate back to a higher level.
+                </p>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-left max-w-md mx-auto">
+                  <h4 className="font-medium text-yellow-800 mb-2">Debugging Information:</h4>
+                  <div className="text-xs text-yellow-700 space-y-1">
+                    <p>• Current level: {drillState.level}</p>
+                    <p>• Coarse cluster: {drillState.coarseCluster || 'None'}</p>
+                    <p>• Fine cluster: {drillState.fineCluster || 'None'}</p>
+                    <p>• Active models: {activeModels.length}</p>
+                    <p>• View mode: {viewMode}</p>
+                    <p>• Show discrepancy only: {showDiscrepancyOnly ? 'Yes' : 'No'}</p>
+                    <p>• Show unexpected only: {showUnexpectedOnly ? 'Yes' : 'No'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={600}>
+              <BarChart data={chartData} margin={{ bottom: 120, top: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  dataKey="name" 
+                  angle={-45}
+                  textAnchor="end"
+                  height={120}
+                  interval={0}
+                  tick={{ fontSize: 12 }}
                 />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
+                <YAxis label={{ value: 'Count', angle: -90, position: 'insideLeft' }} />
+                <Tooltip 
+                  content={<CustomTooltip />} 
+                  cursor={{ fill: 'rgba(0, 0, 0, 0.1)' }}
+                  position={{ x: undefined, y: undefined }}
+                  allowEscapeViewBox={{ x: true, y: true }}
+                  offset={20}
+                  wrapperStyle={{ pointerEvents: 'none' }}
+                />
+                <Legend 
+                  verticalAlign="top" 
+                  height={60}
+                  iconType="rect"
+                  wrapperStyle={{ paddingBottom: '20px', paddingTop: '5px' }}
+                />
+                {activeModels.map((model, index) => (
+                  <Bar 
+                    key={model}
+                    dataKey={`${model}_count`}
+                    name={model}
+                    fill={modelColors[index]} 
+                    cursor={canDrillDown ? "pointer" : "default"}
+                    onClick={canDrillDown ? handleBarClick : undefined}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       )}
 
