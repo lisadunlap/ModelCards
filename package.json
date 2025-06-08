@@ -8,16 +8,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "lucide-react": "^0.263.1",
+    "openai": "^5.1.1",
+    "papaparse": "^5.4.1",
+    "parquet-wasm": "^0.6.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "recharts": "^2.8.0",
-    "lucide-react": "^0.263.1",
-    "papaparse": "^5.4.1"
+    "recharts": "^2.8.0"
   },
   "devDependencies": {
+    "@types/papaparse": "^5.3.8",
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
-    "@types/papaparse": "^5.3.8",
     "@vitejs/plugin-react": "^4.0.3",
     "typescript": "^5.0.2",
     "vite": "^4.4.5"
