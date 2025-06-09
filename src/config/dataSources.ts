@@ -6,12 +6,13 @@
  */
 
 export const DATA_SOURCES = {
-  // Main CSV files for model differences and properties
+  // Main Parquet files for model differences and properties (much smaller than CSV!)
   DIFFERENCES_CSV: '/qwen2_mistral_small.csv',
-  PROPERTIES_CSV: '/all_one_sided_comparisons_clustered_4_stripped.csv',
+  PROPERTIES_CSV: '/all_one_sided_comparisons_clustered_4.csv',
   
-  // Embedding data (can be the same as properties if embeddings are included)
-  EMBEDDINGS_CSV: '/embedding_sample.csv',
+  // Embedding data - Using Parquet for better performance and smaller size
+  EMBEDDINGS_PARQUET: '/all_one_sided_comparisons_clustered_with_embeddings-clean.parquet',
+  EMBEDDINGS_CSV: '/embedding_sample.csv', // Fallback for testing
   
   // Alternative data sources (if you have multiple datasets)
   ALTERNATIVE_DIFFERENCES_CSV: '/alternative_differences.csv',
@@ -27,9 +28,13 @@ export const DATA_SOURCES = {
  */
 export const DATA_CONFIG = {
   // Performance settings
-  MAX_PREVIEW_ROWS: null, // null = load all rows, number = limit rows for testing
+  MAX_PREVIEW_ROWS: null, // Remove limit to see all models
   ENABLE_DYNAMIC_TYPING: true,
   SKIP_EMPTY_LINES: true,
+  
+  // Parquet-specific settings
+  USE_PARQUET: false, // Toggle between Parquet and CSV - set to false to use CSV sample
+  PARQUET_BATCH_SIZE: 1000, // Process Parquet in batches for memory efficiency
   
   // Error handling
   MAX_PARSE_ERRORS: 100, // Maximum parse errors to tolerate
@@ -46,7 +51,7 @@ export const getCurrentDataSources = () => {
   return {
     differences: DATA_SOURCES.DIFFERENCES_CSV,
     properties: DATA_SOURCES.PROPERTIES_CSV,
-    embeddings: DATA_SOURCES.EMBEDDINGS_CSV,
+    embeddings: DATA_CONFIG.USE_PARQUET ? DATA_SOURCES.EMBEDDINGS_PARQUET : DATA_SOURCES.EMBEDDINGS_CSV,
   };
 };
 
@@ -59,7 +64,7 @@ export const validateDataSources = () => {
   
   if (!sources.differences) missing.push('differences CSV');
   if (!sources.properties) missing.push('properties CSV');
-  if (!sources.embeddings) missing.push('embeddings CSV');
+  if (!sources.embeddings) missing.push('embeddings data');
   
   if (missing.length > 0) {
     throw new Error(`Missing data sources: ${missing.join(', ')}`);
