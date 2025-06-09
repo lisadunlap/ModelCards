@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Search, Loader2, Eye, AlertCircle, Sparkles } from 'lucide-react';
 import { OpenAI } from 'openai';
-import { getCurrentDataSources } from './config/dataSources';
+import { getCurrentDataSources, DATA_CONFIG } from './config/dataSources';
+import { readParquet } from 'parquet-wasm';
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -59,12 +60,21 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
       
       console.log('Starting to load embedding data...');
       
-      // Try CSV first (more reliable for large files)
+      // Try Parquet first if enabled, then fallback to CSV
+      if (DATA_CONFIG.USE_PARQUET) {
+        try {
+          await loadParquetData();
+        } catch (parquetError) {
+          console.warn('Failed to load Parquet file, falling back to CSV:', parquetError);
+          await loadCSVData();
+        }
+      } else {
       try {
         await loadCSVData();
       } catch (csvError) {
-        console.warn('Failed to load cleaned CSV file:', csvError);
-        setDataError('Cleaned embedding data file not found. Please ensure all_one_sided_comparisons_clustered_with_embeddings-clean.csv exists in the public directory.');
+          console.warn('Failed to load CSV file:', csvError);
+          setDataError('Embedding data file not found. Please ensure the embedding file exists in the public directory.');
+        }
       }
       
     } catch (error) {
@@ -72,6 +82,103 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
       setDataError(error instanceof Error ? error.message : 'Failed to load embedding data');
     } finally {
       setDataLoading(false);
+    }
+  };
+
+  const loadParquetData = async () => {
+    console.log('Loading Parquet embedding data...');
+    
+    const dataSources = getCurrentDataSources();
+    
+    try {
+      console.log('Fetching Parquet file from:', dataSources.embeddings);
+      const response = await fetch(dataSources.embeddings);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch Parquet file: ${response.status} ${response.statusText}. Path: ${dataSources.embeddings}`);
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      console.log('✅ Parquet file loaded successfully!');
+      console.log(`📦 File size: ${(uint8Array.length / 1024 / 1024).toFixed(1)}MB`);
+      
+      // Read Parquet file using parquet-wasm 0.6.1 API
+      console.log('🔄 Parsing Parquet file...');
+      const table = readParquet(uint8Array);
+      
+      console.log('✅ Parquet file parsed successfully!');
+      console.log('📊 Parquet table type:', typeof table);
+      console.log('📋 Parquet table keys:', Object.keys(table));
+      
+      // Try different methods to convert the table to JavaScript objects
+      let data: any[] = [];
+      
+      // Method 1: Check if it has a toArray method
+      if (typeof (table as any).toArray === 'function') {
+        console.log('📝 Using toArray() method...');
+        data = (table as any).toArray();
+      }
+      // Method 2: Check if it's already an array-like structure
+      else if (Array.isArray(table)) {
+        console.log('📝 Table is already an array...');
+        data = table as any[];
+      }
+      // Method 3: Try to access table data directly
+      else if ((table as any).data) {
+        console.log('📝 Using table.data property...');
+        data = (table as any).data;
+      }
+      // Method 4: Try Arrow Table conversion
+      else if ((table as any).batches || (table as any).recordBatches) {
+        console.log('📝 Converting Arrow table to objects...');
+        // Convert Arrow table to array of objects
+        const batches = (table as any).batches || (table as any).recordBatches;
+        for (const batch of batches) {
+          const batchData = batch.toArray ? batch.toArray() : batch;
+          if (Array.isArray(batchData)) {
+            data.push(...batchData);
+          }
+        }
+      }
+      // Method 5: Manual iteration if table has row access
+      else if (typeof (table as any).get === 'function' && (table as any).length) {
+        console.log('📝 Using manual row iteration...');
+        const length = (table as any).length;
+        for (let i = 0; i < Math.min(length, DATA_CONFIG.MAX_PREVIEW_ROWS || 5000); i++) {
+          data.push((table as any).get(i));
+        }
+      }
+      else {
+        throw new Error('Unable to determine how to extract data from Parquet table. Table structure: ' + JSON.stringify(Object.keys(table)));
+      }
+      
+      console.log(`✅ Parquet data conversion successful!`);
+      console.log(`📊 Total rows extracted: ${data.length}`);
+      
+      if (data.length === 0) {
+        throw new Error('No data extracted from Parquet file');
+      }
+      
+      // Log sample of first row to debug structure
+      console.log('🔍 First row sample:', Object.keys(data[0] || {}));
+      console.log('🔍 First row data preview:', JSON.stringify(data[0], null, 2).substring(0, 200) + '...');
+      
+      // Limit rows if configured
+      const limitedData = DATA_CONFIG.MAX_PREVIEW_ROWS ? data.slice(0, DATA_CONFIG.MAX_PREVIEW_ROWS) : data;
+      
+      console.log(`🎯 Processing ${limitedData.length} rows from Parquet file...`);
+      await processEmbeddingData(limitedData);
+      
+    } catch (parquetError) {
+      console.error('❌ Parquet loading failed:', parquetError);
+      console.error('🔧 Error details:', {
+        name: parquetError instanceof Error ? parquetError.name : 'Unknown',
+        message: parquetError instanceof Error ? parquetError.message : String(parquetError),
+        stack: parquetError instanceof Error ? parquetError.stack : undefined
+      });
+      throw parquetError; // Re-throw to trigger CSV fallback
     }
   };
 
@@ -88,7 +195,7 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
     }
     
     const fileContent = await response.text();
-    console.log('Cleaned CSV file loaded, size:', fileContent.length);
+    console.log('CSV file loaded, size:', fileContent.length);
     
     const Papa = (await import('papaparse')).default;
     
@@ -97,14 +204,14 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
       dynamicTyping: false, // Keep as strings to preserve JSON formatting
       skipEmptyLines: true,
       delimitersToGuess: [',', '\t', '|', ';'],
-      preview: 1000 // Limit to first 1000 rows for performance
+      preview: DATA_CONFIG.MAX_PREVIEW_ROWS || undefined
     });
 
     if (parsedData.errors.length > 0) {
       console.warn('CSV parsing errors:', parsedData.errors);
     }
 
-    console.log('Cleaned CSV parsed successfully, rows:', parsedData.data.length);
+    console.log('CSV parsed successfully, rows:', parsedData.data.length);
     await processEmbeddingData(parsedData.data);
   };
 

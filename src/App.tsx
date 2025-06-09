@@ -62,6 +62,42 @@ const ModelDifferenceAnalyzer = () => {
   // Track model color assignments to detect collisions
   const modelColorAssignments = React.useRef<Map<string, { color: string; models: string[] }>>(new Map());
 
+  // Add error boundary state
+  const [hasRenderError, setHasRenderError] = useState(false);
+
+  // Error boundary effect
+  React.useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      console.error('🚨 Render error caught:', event.error);
+      setHasRenderError(true);
+    };
+
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
+
+  if (hasRenderError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-2xl">
+          <div className="bg-red-100 text-red-800 p-6 rounded-lg">
+            <h2 className="text-xl font-semibold mb-2">Application Error</h2>
+            <p className="mb-4">Something went wrong. Please refresh the page to try again.</p>
+            <button 
+              onClick={() => {
+                setHasRenderError(false);
+                window.location.reload();
+              }} 
+              className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const loadDataSafely = async () => {
     try {
       setLoadingStatus('Validating data source configuration...');
@@ -111,7 +147,7 @@ const ModelDifferenceAnalyzer = () => {
       if (DATA_CONFIG.MAX_PREVIEW_ROWS) {
         parseConfig1.preview = DATA_CONFIG.MAX_PREVIEW_ROWS;
       }
-      const parsedData1 = Papa.parse<any>(csvContent1, parseConfig1);
+      const parsedData1 = Papa.parse(csvContent1, parseConfig1) as any;
       
       console.log('📈 First CSV parsed. Rows found:', parsedData1.data?.length || 0);
       console.log('🔍 First few rows sample:', parsedData1.data?.slice(0, 3) || []);
@@ -160,7 +196,7 @@ const ModelDifferenceAnalyzer = () => {
       if (DATA_CONFIG.MAX_PREVIEW_ROWS) {
         parseConfig2.preview = DATA_CONFIG.MAX_PREVIEW_ROWS;
       }
-      const parsedData2 = Papa.parse<any>(csvContent2, parseConfig2);
+      const parsedData2 = Papa.parse(csvContent2, parseConfig2) as any;
       
       console.log('📈 Second CSV parsed. Rows found:', parsedData2.data?.length || 0);
       
@@ -196,6 +232,16 @@ const ModelDifferenceAnalyzer = () => {
       
       console.log('✅ Second CSV processed successfully. Final count:', processedProperties.length);
       setPropertyData(processedProperties);
+      
+      // Debug: Show all unique models found
+      const allModels = Array.from(new Set([
+        ...processedDifferences.map(d => d.model_1_name).filter(name => name && name !== 'Unknown'),
+        ...processedDifferences.map(d => d.model_2_name).filter(name => name && name !== 'Unknown'),
+        ...processedProperties.map(p => p.model).filter(name => name && name !== 'Unknown')
+      ]));
+      
+      console.log('🎯 All unique models found:', allModels);
+      console.log('📊 Total unique models:', allModels.length);
       
       setLoadingStatus('Data loading completed successfully!');
       console.log('🎉 All data loaded successfully!');
@@ -268,7 +314,6 @@ const ModelDifferenceAnalyzer = () => {
 
   const navigationItems = [
     { id: 'overview', label: 'Overview', icon: Database },
-    { id: 'differences', label: 'Model Differences', icon: GitCompare },
     { id: 'properties', label: 'Property Analysis', icon: BarChart3 },
     { id: 'search', label: 'Semantic Search', icon: Brain }
   ];
@@ -283,20 +328,16 @@ const ModelDifferenceAnalyzer = () => {
     setSidebarOpen(true);
   };
 
-  const handleViewDifference = (item: DifferenceData) => {
-    console.log('View difference:', item);
-    setSelectedItem(item);
-    setSidebarOpen(true);
-  };
-
   const closeSidebar = () => {
     setSidebarOpen(false);
     setSelectedItem(null);
   };
 
   // Generate light background color for model identification
-  const getModelColor = (modelName: string): { backgroundColor: string; borderColor: string } => {
-    if (!modelName) return { backgroundColor: 'bg-neutral-50', borderColor: 'border-neutral-200' };
+  const getModelColor = (modelName: string | undefined | null): { backgroundColor: string; borderColor: string } => {
+    if (!modelName || modelName === 'Unknown') {
+      return { backgroundColor: 'bg-neutral-50', borderColor: 'border-neutral-200' };
+    }
     
     // Enhanced hash function with better collision resistance
     let hash = 0;
@@ -370,7 +411,7 @@ const ModelDifferenceAnalyzer = () => {
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Model Difference Analyzer</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Gettin' the lowdown on my models</h1>
               <p className="text-gray-600 mt-1">Compare and analyze differences between language models</p>
             </div>
             <div className="flex items-center space-x-4 text-sm text-gray-500">
@@ -441,9 +482,9 @@ const ModelDifferenceAnalyzer = () => {
                     <div>
                       <p className="text-lg font-semibold text-gray-900">
                         {Array.from(new Set([
-                          ...data.map(d => d.model_1_name).filter(Boolean),
-                          ...data.map(d => d.model_2_name).filter(Boolean),
-                          ...propertyData.map(p => p.model).filter(Boolean)
+                          ...data.map(d => d.model_1_name).filter(name => name && name !== 'Unknown'),
+                          ...data.map(d => d.model_2_name).filter(name => name && name !== 'Unknown'),
+                          ...propertyData.map(p => p.model).filter(name => name && name !== 'Unknown')
                         ])).length}
                       </p>
                       <p className="text-sm text-gray-600">Unique Models</p>
@@ -466,14 +507,23 @@ const ModelDifferenceAnalyzer = () => {
                   </div>
                 </div>
               </div>
+              
+              {/* Model List */}
+              <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                <h3 className="font-semibold text-blue-800 mb-3">🤖 Models in Dataset</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {Array.from(new Set([
+                    ...data.map(d => d.model_1_name).filter(name => name && name !== 'Unknown'),
+                    ...data.map(d => d.model_2_name).filter(name => name && name !== 'Unknown'),
+                    ...propertyData.map(p => p.model).filter(name => name && name !== 'Unknown')
+                  ])).sort().map((model, index) => (
+                    <div key={index} className="text-sm px-2 py-1 bg-white rounded border">
+                      {model}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          )}
-
-          {selectedView === 'differences' && data.length > 0 && (
-            <InteractiveHierarchicalChart 
-              data={data} 
-              onViewResponse={handleViewDifference} 
-            />
           )}
 
           {selectedView === 'properties' && propertyData.length > 0 && (
@@ -485,7 +535,11 @@ const ModelDifferenceAnalyzer = () => {
 
           {selectedView === 'search' && (
             <SemanticSearch 
-              onViewResponse={item => console.log('View search result:', item)} 
+              onViewResponse={(item) => {
+                console.log('View search result:', item);
+                setSelectedItem(item);
+                setSidebarOpen(true);
+              }} 
             />
           )}
         </div>
@@ -528,290 +582,294 @@ const ModelDifferenceAnalyzer = () => {
 
                   {/* Content */}
                   <div className="flex-1 px-4 py-6 sm:px-6">
-                    <div className="space-y-6">
-                      {/* Property Details */}
-                      {'property_description' in selectedItem && (
-                        <>
-                          <div>
-                            <h3 className="text-sm font-medium text-gray-900 mb-2">Property Description</h3>
-                            <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model).backgroundColor} ${getModelColor(selectedItem.model).borderColor}`}>
-                              <ContentRenderer content={selectedItem.property_description} className="!bg-transparent !p-0" />
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-900 mb-1">Model</h4>
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                {selectedItem.model}
-                              </span>
-                            </div>
-                            
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-900 mb-1">Category</h4>
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                {selectedItem.category}
-                              </span>
-                            </div>
-                            
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-900 mb-1">Impact</h4>
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                selectedItem.impact === 'High' ? 'bg-red-100 text-red-800' :
-                                selectedItem.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-green-100 text-green-800'
-                              }`}>
-                                {selectedItem.impact}
-                              </span>
-                            </div>
-
-                            {selectedItem.type && (
+                    {selectedItem ? (
+                      <div className="space-y-6">
+                        {/* Property Details */}
+                        {'property_description' in selectedItem && (
+                          <>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                               <div>
-                                <h4 className="text-sm font-medium text-gray-900 mb-1">Type</h4>
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                  {selectedItem.type}
+                                <h4 className="text-sm font-medium text-gray-900 mb-1">Model</h4>
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                  {selectedItem.model}
                                 </span>
                               </div>
-                            )}
-
-                            {selectedItem.unexpected_behavior && (
-                              <div>
-                                <h4 className="text-sm font-medium text-gray-900 mb-1">Unexpected Behavior</h4>
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  selectedItem.unexpected_behavior.toLowerCase() === 'true' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-                                }`}>
-                                  {selectedItem.unexpected_behavior}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div>
-                            <h3 className="text-sm font-medium text-gray-900 mb-2">Cluster Hierarchy</h3>
-                            <div className="space-y-2">
-                              <div>
-                                <span className="text-xs text-gray-500">Coarse Cluster:</span>
-                                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                                  {selectedItem.property_description_coarse_cluster_label}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-xs text-gray-500">Fine Cluster:</span>
-                                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
-                                  {selectedItem.property_description_fine_cluster_label}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {selectedItem.evidence && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence</h3>
-                              <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model).backgroundColor} ${getModelColor(selectedItem.model).borderColor}`}>
-                                <ContentRenderer content={selectedItem.evidence} className="!bg-transparent !p-0" />
-                              </div>
-                            </div>
-                          )}
-
-                          {selectedItem.reason && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Reason</h3>
-                              <ContentRenderer content={selectedItem.reason} />
-                            </div>
-                          )}
-
-                          {selectedItem.prompt && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Prompt</h3>
-                              <ContentRenderer content={selectedItem.prompt} />
-                            </div>
-                          )}
-
-                          {(selectedItem.model_1_response || selectedItem.model_2_response) && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {selectedItem.model_1_response && (
-                                <div>
-                                  <h3 className="text-sm font-medium text-gray-900 mb-2">
-                                    {selectedItem.model_1_name} Response
-                                  </h3>
-                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name || 'Model 1').backgroundColor} ${getModelColor(selectedItem.model_1_name || 'Model 1').borderColor}`}>
-                                    <ContentRenderer content={selectedItem.model_1_response} className="!bg-transparent !p-0" />
-                                  </div>
-                                </div>
-                              )}
                               
-                              {selectedItem.model_2_response && (
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-900 mb-1">Category</h4>
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                  {selectedItem.category}
+                                </span>
+                              </div>
+                              
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-900 mb-1">Impact</h4>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  selectedItem.impact === 'High' ? 'bg-red-100 text-red-800' :
+                                  selectedItem.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-green-100 text-green-800'
+                                }`}>
+                                  {selectedItem.impact}
+                                </span>
+                              </div>
+
+                              {selectedItem.type && (
                                 <div>
-                                  <h3 className="text-sm font-medium text-gray-900 mb-2">
-                                    {selectedItem.model_2_name} Response
-                                  </h3>
-                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name || 'Model 2').backgroundColor} ${getModelColor(selectedItem.model_2_name || 'Model 2').borderColor}`}>
-                                    <ContentRenderer content={selectedItem.model_2_response} className="!bg-transparent !p-0" />
-                                  </div>
+                                  <h4 className="text-sm font-medium text-gray-900 mb-1">Type</h4>
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                    {selectedItem.type}
+                                  </span>
+                                </div>
+                              )}
+
+                              {selectedItem.unexpected_behavior && (
+                                <div>
+                                  <h4 className="text-sm font-medium text-gray-900 mb-1">Unexpected Behavior</h4>
+                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                    selectedItem.unexpected_behavior.toLowerCase() === 'true' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                                  }`}>
+                                    {selectedItem.unexpected_behavior}
+                                  </span>
                                 </div>
                               )}
                             </div>
-                          )}
 
-                          {selectedItem.differences && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Differences</h3>
-                              <ContentRenderer content={selectedItem.differences} />
-                            </div>
-                          )}
-
-                          {selectedItem.parsed_differences && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Parsed Differences</h3>
-                              <ContentRenderer content={selectedItem.parsed_differences} />
-                            </div>
-                          )}
-                        </>
-                      )}
-
-                      {/* Difference Details */}
-                      {'difference' in selectedItem && (
-                        <>
-                          <div>
-                            <h3 className="text-sm font-medium text-gray-900 mb-2">Difference</h3>
-                            <ContentRenderer content={selectedItem.difference} />
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-900 mb-1">Model</h4>
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                {selectedItem.model}
-                              </span>
-                            </div>
-                            
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-900 mb-1">Category</h4>
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                {selectedItem.category}
-                              </span>
-                            </div>
-                            
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-900 mb-1">Impact</h4>
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                selectedItem.impact === 'High' ? 'bg-red-100 text-red-800' :
-                                selectedItem.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-green-100 text-green-800'
-                              }`}>
-                                {selectedItem.impact}
-                              </span>
-                            </div>
-
-                            {selectedItem.type && (
-                              <div>
-                                <h4 className="text-sm font-medium text-gray-900 mb-1">Type</h4>
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                  {selectedItem.type}
-                                </span>
-                              </div>
-                            )}
-
-                            {selectedItem.unexpected_behavior && (
-                              <div>
-                                <h4 className="text-sm font-medium text-gray-900 mb-1">Unexpected Behavior</h4>
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  selectedItem.unexpected_behavior.toLowerCase() === 'true' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-                                }`}>
-                                  {selectedItem.unexpected_behavior}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          {(selectedItem.coarse_cluster_label || selectedItem.fine_cluster_label) && (
                             <div>
                               <h3 className="text-sm font-medium text-gray-900 mb-2">Cluster Hierarchy</h3>
                               <div className="space-y-2">
-                                {selectedItem.coarse_cluster_label && (
+                                <div>
+                                  <span className="text-xs text-gray-500">Coarse Cluster:</span>
+                                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                    {selectedItem.property_description_coarse_cluster_label}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-xs text-gray-500">Fine Cluster:</span>
+                                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                                    {selectedItem.property_description_fine_cluster_label}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-900 mb-2">Property Description</h3>
+                              <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model || 'Unknown').backgroundColor} ${getModelColor(selectedItem.model || 'Unknown').borderColor}`}>
+                                <ContentRenderer content={selectedItem.property_description} className="!bg-transparent !p-0" />
+                              </div>
+                            </div>
+
+                            {selectedItem.evidence && (
+                              <div>
+                                <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence</h3>
+                                <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model || 'Unknown').backgroundColor} ${getModelColor(selectedItem.model || 'Unknown').borderColor}`}>
+                                  <ContentRenderer content={selectedItem.evidence} className="!bg-transparent !p-0" />
+                                </div>
+                              </div>
+                            )}
+
+                            {selectedItem.reason && (
+                              <div>
+                                <h3 className="text-sm font-medium text-gray-900 mb-2">Reason</h3>
+                                <ContentRenderer content={selectedItem.reason} />
+                              </div>
+                            )}
+
+                            {selectedItem.prompt && (
+                              <div>
+                                <h3 className="text-sm font-medium text-gray-900 mb-2">Prompt</h3>
+                                <ContentRenderer content={selectedItem.prompt} />
+                              </div>
+                            )}
+
+                            {(selectedItem.model_1_response || selectedItem.model_2_response) && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {selectedItem.model_1_response && (
                                   <div>
-                                    <span className="text-xs text-gray-500">Coarse Cluster:</span>
-                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                                      {selectedItem.coarse_cluster_label}
-                                    </span>
+                                    <h3 className="text-sm font-medium text-gray-900 mb-2">
+                                      {selectedItem.model_1_name} Response
+                                    </h3>
+                                    <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name || 'Model 1').backgroundColor} ${getModelColor(selectedItem.model_1_name || 'Model 1').borderColor}`}>
+                                      <ContentRenderer content={selectedItem.model_1_response} className="!bg-transparent !p-0" />
+                                    </div>
                                   </div>
                                 )}
-                                {selectedItem.fine_cluster_label && (
+                                
+                                {selectedItem.model_2_response && (
                                   <div>
-                                    <span className="text-xs text-gray-500">Fine Cluster:</span>
-                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
-                                      {selectedItem.fine_cluster_label}
-                                    </span>
+                                    <h3 className="text-sm font-medium text-gray-900 mb-2">
+                                      {selectedItem.model_2_name} Response
+                                    </h3>
+                                    <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name || 'Model 2').backgroundColor} ${getModelColor(selectedItem.model_2_name || 'Model 2').borderColor}`}>
+                                      <ContentRenderer content={selectedItem.model_2_response} className="!bg-transparent !p-0" />
+                                    </div>
                                   </div>
                                 )}
                               </div>
-                            </div>
-                          )}
+                            )}
 
-                          {selectedItem.reason && (
+                            {selectedItem.differences && (
+                              <div>
+                                <h3 className="text-sm font-medium text-gray-900 mb-2">Differences</h3>
+                                <ContentRenderer content={selectedItem.differences} />
+                              </div>
+                            )}
+
+                            {selectedItem.parsed_differences && (
+                              <div>
+                                <h3 className="text-sm font-medium text-gray-900 mb-2">Parsed Differences</h3>
+                                <ContentRenderer content={selectedItem.parsed_differences} />
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        {/* Difference Details */}
+                        {'difference' in selectedItem && (
+                          <>
                             <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Reason</h3>
-                              <ContentRenderer content={selectedItem.reason} />
+                              <h3 className="text-sm font-medium text-gray-900 mb-2">Difference</h3>
+                              <ContentRenderer content={selectedItem.difference} />
                             </div>
-                          )}
 
-                          {selectedItem.prompt && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Prompt</h3>
-                              <ContentRenderer content={selectedItem.prompt} />
-                            </div>
-                          )}
-
-                          {(selectedItem.a_evidence || selectedItem.b_evidence) && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {selectedItem.a_evidence && (
-                                <div>
-                                  <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence A</h3>
-                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name || 'Model A').backgroundColor} ${getModelColor(selectedItem.model_1_name || 'Model A').borderColor}`}>
-                                    <ContentRenderer content={selectedItem.a_evidence} className="!bg-transparent !p-0" />
-                                  </div>
-                                </div>
-                              )}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-900 mb-1">Category</h4>
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                  {selectedItem.category}
+                                </span>
+                              </div>
                               
-                              {selectedItem.b_evidence && (
-                                <div>
-                                  <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence B</h3>
-                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name || 'Model B').backgroundColor} ${getModelColor(selectedItem.model_2_name || 'Model B').borderColor}`}>
-                                    <ContentRenderer content={selectedItem.b_evidence} className="!bg-transparent !p-0" />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-900 mb-1">Impact</h4>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  selectedItem.impact === 'High' ? 'bg-red-100 text-red-800' :
+                                  selectedItem.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-green-100 text-green-800'
+                                }`}>
+                                  {selectedItem.impact}
+                                </span>
+                              </div>
 
-                          {(selectedItem.model_1_response || selectedItem.model_2_response) && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {selectedItem.model_1_response && (
+                              {selectedItem.type && (
                                 <div>
-                                  <h3 className="text-sm font-medium text-gray-900 mb-2">
-                                    {selectedItem.model_1_name} Response
-                                  </h3>
-                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name || 'Model 1').backgroundColor} ${getModelColor(selectedItem.model_1_name || 'Model 1').borderColor}`}>
-                                    <ContentRenderer content={selectedItem.model_1_response} className="!bg-transparent !p-0" />
-                                  </div>
+                                  <h4 className="text-sm font-medium text-gray-900 mb-1">Type</h4>
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                    {selectedItem.type}
+                                  </span>
                                 </div>
                               )}
-                              
-                              {selectedItem.model_2_response && (
+
+                              {selectedItem.unexpected_behavior && (
                                 <div>
-                                  <h3 className="text-sm font-medium text-gray-900 mb-2">
-                                    {selectedItem.model_2_name} Response
-                                  </h3>
-                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name || 'Model 2').backgroundColor} ${getModelColor(selectedItem.model_2_name || 'Model 2').borderColor}`}>
-                                    <ContentRenderer content={selectedItem.model_2_response} className="!bg-transparent !p-0" />
-                                  </div>
+                                  <h4 className="text-sm font-medium text-gray-900 mb-1">Unexpected Behavior</h4>
+                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                    selectedItem.unexpected_behavior.toLowerCase() === 'true' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                                  }`}>
+                                    {selectedItem.unexpected_behavior}
+                                  </span>
                                 </div>
                               )}
                             </div>
-                          )}
-                        </>
-                      )}
-                    </div>
+
+                            {(selectedItem.coarse_cluster_label || selectedItem.fine_cluster_label) && (
+                              <div>
+                                <h3 className="text-sm font-medium text-gray-900 mb-2">Cluster Hierarchy</h3>
+                                <div className="space-y-2">
+                                  {selectedItem.coarse_cluster_label && (
+                                    <div>
+                                      <span className="text-xs text-gray-500">Coarse Cluster:</span>
+                                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                        {selectedItem.coarse_cluster_label}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {selectedItem.fine_cluster_label && (
+                                    <div>
+                                      <span className="text-xs text-gray-500">Fine Cluster:</span>
+                                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                                        {selectedItem.fine_cluster_label}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {selectedItem.reason && (
+                              <div>
+                                <h3 className="text-sm font-medium text-gray-900 mb-2">Reason</h3>
+                                <ContentRenderer content={selectedItem.reason} />
+                              </div>
+                            )}
+
+                            {selectedItem.prompt && (
+                              <div>
+                                <h3 className="text-sm font-medium text-gray-900 mb-2">Prompt</h3>
+                                <ContentRenderer content={selectedItem.prompt} />
+                              </div>
+                            )}
+
+                            {(selectedItem.a_evidence || selectedItem.b_evidence) && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {selectedItem.a_evidence && (
+                                  <div>
+                                    <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence A</h3>
+                                    <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name || 'Model A').backgroundColor} ${getModelColor(selectedItem.model_1_name || 'Model A').borderColor}`}>
+                                      <ContentRenderer content={selectedItem.a_evidence} className="!bg-transparent !p-0" />
+                                    </div>
+                                  </div>
+                                )}
+                                
+                                {selectedItem.b_evidence && (
+                                  <div>
+                                    <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence B</h3>
+                                    <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name || 'Model B').backgroundColor} ${getModelColor(selectedItem.model_2_name || 'Model B').borderColor}`}>
+                                      <ContentRenderer content={selectedItem.b_evidence} className="!bg-transparent !p-0" />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {(selectedItem.model_1_response || selectedItem.model_2_response) && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {selectedItem.model_1_response && (
+                                  <div>
+                                    <h3 className="text-sm font-medium text-gray-900 mb-2">
+                                      {selectedItem.model_1_name} Response
+                                    </h3>
+                                    <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name || 'Model 1').backgroundColor} ${getModelColor(selectedItem.model_1_name || 'Model 1').borderColor}`}>
+                                      <ContentRenderer content={selectedItem.model_1_response} className="!bg-transparent !p-0" />
+                                    </div>
+                                  </div>
+                                )}
+                                
+                                {selectedItem.model_2_response && (
+                                  <div>
+                                    <h3 className="text-sm font-medium text-gray-900 mb-2">
+                                      {selectedItem.model_2_name} Response
+                                    </h3>
+                                    <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name || 'Model 2').backgroundColor} ${getModelColor(selectedItem.model_2_name || 'Model 2').borderColor}`}>
+                                      <ContentRenderer content={selectedItem.model_2_response} className="!bg-transparent !p-0" />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {/* Placeholder for loading */}
+                        <div className="animate-pulse">
+                          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                          <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+                          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
