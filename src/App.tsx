@@ -1,28 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Users, GitCompare, Brain, Database, X, Eye, ExternalLink } from 'lucide-react';
+import { BarChart3, Users, Database, Brain, X, Eye, ExternalLink } from 'lucide-react';
 import InteractiveHierarchicalChart from './InteractiveHierarchicalChart';
 import InteractivePropertyChart from './InteractivePropertyChart';
 import SemanticSearch from './SemanticSearch';
 import ContentRenderer from './components/ContentRenderer';
 import { getCurrentDataSources, validateDataSources, DATA_CONFIG } from './config/dataSources';
-
-interface DifferenceData {
-  difference: string;
-  category: string;
-  coarse_cluster_label?: string;
-  fine_cluster_label?: string;
-  impact: string;
-  reason?: string;
-  type?: string;
-  prompt?: string;
-  a_evidence?: string;
-  b_evidence?: string;
-  model_1_response?: string;
-  model_2_response?: string;
-  model_1_name?: string;
-  model_2_name?: string;
-  unexpected_behavior?: string;
-}
 
 interface PropertyData {
   prompt: string;
@@ -48,7 +30,6 @@ interface PropertyData {
 }
 
 const ModelDifferenceAnalyzer = () => {
-  const [data, setData] = useState<DifferenceData[]>([]);
   const [propertyData, setPropertyData] = useState<PropertyData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +37,7 @@ const ModelDifferenceAnalyzer = () => {
   const [loadingStatus, setLoadingStatus] = useState<string>('Starting...');
   
   // Add state for side panel
-  const [selectedItem, setSelectedItem] = useState<PropertyData | DifferenceData | null>(null);
+  const [selectedItem, setSelectedItem] = useState<PropertyData | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Track model color assignments to detect collisions
@@ -108,21 +89,13 @@ const ModelDifferenceAnalyzer = () => {
       const dataSources = getCurrentDataSources();
       console.log('📋 Using data sources:', dataSources);
       
-      // Test if CSV files are accessible
-      setLoadingStatus('Checking differences CSV file...');
-      const response1 = await fetch(dataSources.differences);
-      console.log('📁 Differences CSV response status:', response1.status, response1.statusText);
-      
-      if (!response1.ok) {
-        throw new Error(`Differences CSV file not accessible: ${response1.status} ${response1.statusText}. Path: ${dataSources.differences}`);
-      }
-      
+      // Test if properties CSV file is accessible
       setLoadingStatus('Checking properties CSV file...');
-      const response2 = await fetch(dataSources.properties);
-      console.log('📁 Properties CSV response status:', response2.status, response2.statusText);
+      const response = await fetch(dataSources.properties);
+      console.log('📁 Properties CSV response status:', response.status, response.statusText);
       
-      if (!response2.ok) {
-        throw new Error(`Properties CSV file not accessible: ${response2.status} ${response2.statusText}. Path: ${dataSources.properties}`);
+      if (!response.ok) {
+        throw new Error(`Properties CSV file not accessible: ${response.status} ${response.statusText}. Path: ${dataSources.properties}`);
       }
       
       // Load Papa Parse library
@@ -149,104 +122,43 @@ const ModelDifferenceAnalyzer = () => {
         return shuffled.slice(0, maxRows);
       };
       
-      // Load and parse first CSV with size check
-      setLoadingStatus('Reading first CSV content...');
-      console.log('📖 Reading first CSV content');
-      const csvContent1 = await response1.text();
-      const csvSize1MB = csvContent1.length / (1024 * 1024);
-      console.log('📊 First CSV size:', csvContent1.length, 'characters', `(${csvSize1MB.toFixed(2)} MB)`);
+      // Load and parse properties CSV with size check
+      setLoadingStatus('Reading properties CSV content...');
+      console.log('📖 Reading properties CSV content');
+      const csvContent = await response.text();
+      const csvSizeMB = csvContent.length / (1024 * 1024);
+      console.log('📊 Properties CSV size:', csvContent.length, 'characters', `(${csvSizeMB.toFixed(2)} MB)`);
       
-      setLoadingStatus('Parsing first CSV...');
-      console.log('🔍 Parsing differences CSV');
+      setLoadingStatus('Parsing properties CSV...');
+      console.log('🔍 Parsing properties CSV');
       
       // Parse without preview limit first to get full dataset for sampling
-      const parsedData1 = Papa.parse(csvContent1, {
+      const parsedData = Papa.parse(csvContent, {
         header: true,
         dynamicTyping: DATA_CONFIG.ENABLE_DYNAMIC_TYPING,
         skipEmptyLines: DATA_CONFIG.SKIP_EMPTY_LINES,
       }) as any;
       
-      console.log('📈 First CSV parsed. Total rows found:', parsedData1.data?.length || 0);
+      console.log('📈 Properties CSV parsed. Total rows found:', parsedData.data?.length || 0);
       
-      if (parsedData1.errors && parsedData1.errors.length > 0) {
-        console.warn('⚠️ Parsing errors in first CSV:', parsedData1.errors);
+      if (parsedData.errors && parsedData.errors.length > 0) {
+        console.warn('⚠️ Parsing errors in properties CSV:', parsedData.errors);
       }
       
       // Apply random sampling if dataset is large
       const MAX_ROWS = 10000;
-      let sampledData1 = parsedData1.data || [];
-      let wasData1Sampled = false;
+      let sampledData = parsedData.data || [];
+      let wasDataSampled = false;
       
-      if (sampledData1.length > MAX_ROWS) {
-        setLoadingStatus(`Dataset is large (${sampledData1.length} rows). Randomly sampling ${MAX_ROWS} rows...`);
-        sampledData1 = randomSample(sampledData1, MAX_ROWS);
-        wasData1Sampled = true;
-        console.log(`🎯 Sampled ${sampledData1.length} rows from first CSV`);
+      if (sampledData.length > MAX_ROWS) {
+        setLoadingStatus(`Dataset is large (${sampledData.length} rows). Randomly sampling ${MAX_ROWS} rows...`);
+        sampledData = randomSample(sampledData, MAX_ROWS);
+        wasDataSampled = true;
+        console.log(`🎯 Sampled ${sampledData.length} rows from properties CSV`);
       }
       
-      setLoadingStatus('Processing first CSV data...');
-      const processedDifferences = sampledData1
-        .filter((row: any) => row && row.difference)
-        .map((row: any) => ({
-          difference: row.difference || '',
-          category: row.category || 'Unknown',
-          coarse_cluster_label: row.coarse_cluster_label,
-          fine_cluster_label: row.fine_cluster_label,
-          impact: row.impact || 'Low',
-          reason: row.reason,
-          type: row.type,
-          prompt: row.prompt,
-          a_evidence: row.a_evidence,
-          b_evidence: row.b_evidence,
-          model_1_response: row.model_1_response,
-          model_2_response: row.model_2_response,
-          model_1_name: row.model_1_name,
-          model_2_name: row.model_2_name,
-          unexpected_behavior: row.unexpected_behavior
-        })) as DifferenceData[];
-      
-      console.log('✅ First CSV processed successfully. Final count:', processedDifferences.length);
-      if (wasData1Sampled) {
-        console.log('🎲 First CSV was randomly sampled to prevent performance issues');
-      }
-      setData(processedDifferences);
-      
-      // Load and parse second CSV with size check
-      setLoadingStatus('Reading second CSV content...');
-      console.log('📖 Reading second CSV content');
-      const csvContent2 = await response2.text();
-      const csvSize2MB = csvContent2.length / (1024 * 1024);
-      console.log('📊 Second CSV size:', csvContent2.length, 'characters', `(${csvSize2MB.toFixed(2)} MB)`);
-      
-      setLoadingStatus('Parsing second CSV...');
-      console.log('🔍 Parsing properties CSV');
-      
-      // Parse without preview limit first to get full dataset for sampling
-      const parsedData2 = Papa.parse(csvContent2, {
-        header: true,
-        dynamicTyping: DATA_CONFIG.ENABLE_DYNAMIC_TYPING,
-        skipEmptyLines: DATA_CONFIG.SKIP_EMPTY_LINES,
-      }) as any;
-      
-      console.log('📈 Second CSV parsed. Total rows found:', parsedData2.data?.length || 0);
-      
-      if (parsedData2.errors && parsedData2.errors.length > 0) {
-        console.warn('⚠️ Parsing errors in second CSV:', parsedData2.errors);
-      }
-      
-      // Apply random sampling if dataset is large
-      let sampledData2 = parsedData2.data || [];
-      let wasData2Sampled = false;
-      
-      if (sampledData2.length > MAX_ROWS) {
-        setLoadingStatus(`Dataset is large (${sampledData2.length} rows). Randomly sampling ${MAX_ROWS} rows...`);
-        sampledData2 = randomSample(sampledData2, MAX_ROWS);
-        wasData2Sampled = true;
-        console.log(`🎯 Sampled ${sampledData2.length} rows from second CSV`);
-      }
-      
-      setLoadingStatus('Processing second CSV data...');
-      const processedProperties = sampledData2
+      setLoadingStatus('Processing properties data...');
+      const processedProperties = sampledData
         .filter((row: any) => row && row.property_description)
         .map((row: any) => ({
           prompt: row.prompt || '',
@@ -271,16 +183,14 @@ const ModelDifferenceAnalyzer = () => {
           property_description_fine_cluster_id: row.property_description_fine_cluster_id || 0
         })) as PropertyData[];
       
-      console.log('✅ Second CSV processed successfully. Final count:', processedProperties.length);
-      if (wasData2Sampled) {
-        console.log('🎲 Second CSV was randomly sampled to prevent performance issues');
+      console.log('✅ Properties CSV processed successfully. Final count:', processedProperties.length);
+      if (wasDataSampled) {
+        console.log('🎲 Properties CSV was randomly sampled to prevent performance issues');
       }
       setPropertyData(processedProperties);
       
       // Debug: Show all unique models found
       const allModels = Array.from(new Set([
-        ...processedDifferences.map(d => d.model_1_name).filter(name => name && name !== 'Unknown'),
-        ...processedDifferences.map(d => d.model_2_name).filter(name => name && name !== 'Unknown'),
         ...processedProperties.map(p => p.model).filter(name => name && name !== 'Unknown')
       ]));
       
@@ -289,51 +199,65 @@ const ModelDifferenceAnalyzer = () => {
       
       // Update loading status with sampling information
       let statusMessage = 'Data loading completed successfully!';
-      if (wasData1Sampled || wasData2Sampled) {
-        statusMessage += ' Large datasets were randomly sampled for optimal performance.';
+      if (wasDataSampled) {
+        statusMessage += ' Large dataset was randomly sampled for optimal performance.';
       }
       setLoadingStatus(statusMessage);
       
       console.log('🎉 All data loaded successfully!');
-      console.log('📊 Final counts - Differences:', processedDifferences.length, 'Properties:', processedProperties.length);
-      if (wasData1Sampled || wasData2Sampled) {
-        console.log('🎲 Random sampling was applied to prevent browser performance issues');
+      console.log('📊 Final count - Properties:', processedProperties.length);
+      if (wasDataSampled) {
+        console.log('🎲 Data was randomly sampled to prevent performance issues');
       }
       
+      setLoading(false);
+      setError(null);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('❌ Data loading failed:', errorMessage);
-      console.error('📍 Error details:', error);
-      setError(`Failed to load data: ${errorMessage}`);
-      setLoadingStatus(`Failed: ${errorMessage}`);
+      console.error('❌ Error loading data:', error);
+      setError(error instanceof Error ? error.message : 'An unexpected error occurred');
+      setLoading(false);
     }
   };
 
+  // Load data when component mounts
   useEffect(() => {
+    let mounted = true;
+    
     const loadData = async () => {
-      console.log('🚀 App mounted, starting data load process');
-      await loadDataSafely();
-      setLoading(false);
+      if (!mounted) return;
+      
+      try {
+        await loadDataSafely();
+      } catch (error) {
+        if (mounted) {
+          console.error('💥 Critical error in data loading:', error);
+          setError('Failed to load data. Please check your data files and try again.');
+          setLoading(false);
+        }
+      }
     };
     
     loadData();
+    
+    return () => {
+      mounted = false;
+    };
   }, []);
-
-  console.log('🔄 App rendering. Loading:', loading, 'Error:', error);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading Model Analysis Data</h2>
-          <p className="text-gray-600 mb-4">Processing CSV files with enhanced error handling...</p>
-          <div className="bg-blue-50 p-3 rounded-lg">
-            <p className="text-sm text-blue-800 font-medium">Status:</p>
-            <p className="text-sm text-blue-700">{loadingStatus}</p>
-          </div>
-          <div className="mt-4 text-xs text-gray-500">
-            Check browser console for detailed progress logs
+        <div className="text-center max-w-2xl">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading Data</h2>
+          <p className="text-gray-600 mb-4">{loadingStatus}</p>
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <p className="text-blue-800 font-medium mb-2">📊 What's Loading:</p>
+            <div className="text-blue-700 text-sm space-y-1">
+              <p>• Data loaded so far: {propertyData.length} properties</p>
+              <p>• Processing and validating CSV files</p>
+              <p>• Preparing interactive visualizations</p>
+            </div>
           </div>
         </div>
       </div>
@@ -345,16 +269,14 @@ const ModelDifferenceAnalyzer = () => {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center max-w-2xl">
           <div className="bg-red-100 text-red-800 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-2">Error Loading Data</h2>
+            <h2 className="text-xl font-semibold mb-2">Data Loading Error</h2>
             <p className="mb-4">{error}</p>
-            <div className="bg-red-50 p-3 rounded text-sm text-left mb-4">
-              <p className="font-medium mb-2">Debugging Information:</p>
-              <p>• Check browser console for detailed error logs</p>
-              <p>• Current status: {loadingStatus}</p>
-              <p>• Data loaded so far: {data.length} differences, {propertyData.length} properties</p>
-            </div>
             <button 
-              onClick={() => window.location.reload()} 
+              onClick={() => {
+                setError(null);
+                setLoading(true);
+                loadDataSafely();
+              }} 
               className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
             >
               Retry
@@ -464,15 +386,13 @@ const ModelDifferenceAnalyzer = () => {
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Gettin' the lowdown on my models</h1>
-              <p className="text-gray-600 mt-1">Compare and analyze differences between language models</p>
+              <h1 className="text-2xl font-bold text-gray-900">Model Property Analyzer</h1>
+              <p className="text-gray-600 mt-1">Analyze and explore language model properties</p>
             </div>
             <div className="flex items-center space-x-4 text-sm text-gray-500">
-              <span>{data.length.toLocaleString()} differences</span>
-              <span>•</span>
               <span>{propertyData.length.toLocaleString()} properties</span>
               <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                Moderate Dataset
+                Dataset Loaded
               </span>
             </div>
           </div>
@@ -508,17 +428,7 @@ const ModelDifferenceAnalyzer = () => {
           {selectedView === 'overview' && (
             <div>
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Data Overview</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <div className="flex items-center">
-                    <GitCompare className="h-8 w-8 text-blue-600 mr-3" />
-                    <div>
-                      <p className="text-lg font-semibold text-gray-900">{data.length}</p>
-                      <p className="text-sm text-gray-600">Model Differences</p>
-                    </div>
-                  </div>
-                </div>
-                
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-green-50 p-4 rounded-lg">
                   <div className="flex items-center">
                     <BarChart3 className="h-8 w-8 text-green-600 mr-3" />
@@ -535,8 +445,6 @@ const ModelDifferenceAnalyzer = () => {
                     <div>
                       <p className="text-lg font-semibold text-gray-900">
                         {Array.from(new Set([
-                          ...data.map(d => d.model_1_name).filter(name => name && name !== 'Unknown'),
-                          ...data.map(d => d.model_2_name).filter(name => name && name !== 'Unknown'),
                           ...propertyData.map(p => p.model).filter(name => name && name !== 'Unknown')
                         ])).length}
                       </p>
@@ -550,10 +458,9 @@ const ModelDifferenceAnalyzer = () => {
                 <h3 className="font-semibold text-green-800 mb-2">✅ Successfully Loaded Real Data!</h3>
                 <div className="text-green-700 space-y-2">
                   <p>
-                    Your model comparison dashboard is now ready with real data from your CSV files.
+                    Your model property dashboard is now ready with real data from your CSV files.
                   </p>
                   <div className="text-sm">
-                    <p>• Loaded {data.length} model differences from {dataSources.differences}</p>
                     <p>• Loaded {propertyData.length} properties from {dataSources.properties}</p>
                     <p>• All interactive charts and analysis tools are now available</p>
                     <p>• OpenAI semantic search is configured and ready</p>
@@ -566,8 +473,6 @@ const ModelDifferenceAnalyzer = () => {
                 <h3 className="font-semibold text-blue-800 mb-3">🤖 Models in Dataset</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                   {Array.from(new Set([
-                    ...data.map(d => d.model_1_name).filter(name => name && name !== 'Unknown'),
-                    ...data.map(d => d.model_2_name).filter(name => name && name !== 'Unknown'),
                     ...propertyData.map(p => p.model).filter(name => name && name !== 'Unknown')
                   ])).sort().map((model, index) => (
                     <div key={index} className="text-sm px-2 py-1 bg-white rounded border">
@@ -618,7 +523,7 @@ const ModelDifferenceAnalyzer = () => {
                       <div className="flex items-center space-x-3">
                         <Eye className="h-6 w-6 text-gray-400" />
                         <h2 className="text-lg font-medium text-gray-900">
-                          {'property_description' in selectedItem ? 'Property Details' : 'Difference Details'}
+                          Property Details
                         </h2>
                       </div>
                       <div className="ml-3 h-7 flex items-center">
@@ -638,279 +543,117 @@ const ModelDifferenceAnalyzer = () => {
                     {selectedItem ? (
                     <div className="space-y-6">
                       {/* Property Details */}
-                      {'property_description' in selectedItem && (
-                        <>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-900 mb-1">Model</h4>
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                {selectedItem.model}
-                              </span>
-                            </div>
-                            
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-900 mb-1">Category</h4>
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                {selectedItem.category}
-                              </span>
-                            </div>
-                            
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-900 mb-1">Impact</h4>
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                selectedItem.impact === 'High' ? 'bg-red-100 text-red-800' :
-                                selectedItem.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-green-100 text-green-800'
-                              }`}>
-                                {selectedItem.impact}
-                              </span>
-                            </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900 mb-1">Model</h4>
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {selectedItem.model}
+                          </span>
+                        </div>
+                        
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900 mb-1">Category</h4>
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            {selectedItem.category}
+                          </span>
+                        </div>
+                        
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900 mb-1">Impact</h4>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            selectedItem.impact === 'High' ? 'bg-red-100 text-red-800' :
+                            selectedItem.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {selectedItem.impact}
+                          </span>
+                        </div>
 
-                            {selectedItem.type && (
-                              <div>
-                                <h4 className="text-sm font-medium text-gray-900 mb-1">Type</h4>
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                  {selectedItem.type}
-                                </span>
-                              </div>
-                            )}
-
-                            {selectedItem.unexpected_behavior && (
-                              <div>
-                                <h4 className="text-sm font-medium text-gray-900 mb-1">Unexpected Behavior</h4>
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  selectedItem.unexpected_behavior.toLowerCase() === 'true' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-                                }`}>
-                                  {selectedItem.unexpected_behavior}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
+                        {selectedItem.type && (
                           <div>
-                            <h3 className="text-sm font-medium text-gray-900 mb-2">Cluster Hierarchy</h3>
-                            <div className="space-y-2">
-                              <div>
-                                <span className="text-xs text-gray-500">Coarse Cluster:</span>
-                                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                                  {selectedItem.property_description_coarse_cluster_label}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-xs text-gray-500">Fine Cluster:</span>
-                                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
-                                  {selectedItem.property_description_fine_cluster_label}
-                                </span>
-                              </div>
-                            </div>
+                            <h4 className="text-sm font-medium text-gray-900 mb-1">Type</h4>
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                              {selectedItem.type}
+                            </span>
                           </div>
+                        )}
 
+                        {selectedItem.unexpected_behavior && (
                           <div>
-                            <h3 className="text-sm font-medium text-gray-900 mb-2">Property Description</h3>
-                              <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model || 'Unknown').backgroundColor} ${getModelColor(selectedItem.model || 'Unknown').borderColor}`}>
-                              <ContentRenderer content={selectedItem.property_description} className="!bg-transparent !p-0" />
-                            </div>
+                            <h4 className="text-sm font-medium text-gray-900 mb-1">Unexpected Behavior</h4>
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              selectedItem.unexpected_behavior.toLowerCase() === 'true' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                            }`}>
+                              {selectedItem.unexpected_behavior}
+                            </span>
                           </div>
+                        )}
+                      </div>
 
-                          {selectedItem.evidence && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence</h3>
-                                <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model || 'Unknown').backgroundColor} ${getModelColor(selectedItem.model || 'Unknown').borderColor}`}>
-                                <ContentRenderer content={selectedItem.evidence} className="!bg-transparent !p-0" />
-                              </div>
-                            </div>
-                          )}
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-900 mb-2">Property Description</h3>
+                        <ContentRenderer content={selectedItem.property_description} />
+                      </div>
 
-                          {selectedItem.reason && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Reason</h3>
-                              <ContentRenderer content={selectedItem.reason} />
-                            </div>
-                          )}
-
-                          {selectedItem.prompt && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Prompt</h3>
-                              <ContentRenderer content={selectedItem.prompt} />
-                            </div>
-                          )}
-
-                          {(selectedItem.model_1_response || selectedItem.model_2_response) && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {selectedItem.model_1_response && (
-                                <div>
-                                  <h3 className="text-sm font-medium text-gray-900 mb-2">
-                                    {selectedItem.model_1_name} Response
-                                  </h3>
-                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name || 'Model 1').backgroundColor} ${getModelColor(selectedItem.model_1_name || 'Model 1').borderColor}`}>
-                                    <ContentRenderer content={selectedItem.model_1_response} className="!bg-transparent !p-0" />
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {selectedItem.model_2_response && (
-                                <div>
-                                  <h3 className="text-sm font-medium text-gray-900 mb-2">
-                                    {selectedItem.model_2_name} Response
-                                  </h3>
-                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name || 'Model 2').backgroundColor} ${getModelColor(selectedItem.model_2_name || 'Model 2').borderColor}`}>
-                                    <ContentRenderer content={selectedItem.model_2_response} className="!bg-transparent !p-0" />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {selectedItem.differences && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Differences</h3>
-                              <ContentRenderer content={selectedItem.differences} />
-                            </div>
-                          )}
-
-                          {selectedItem.parsed_differences && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Parsed Differences</h3>
-                              <ContentRenderer content={selectedItem.parsed_differences} />
-                            </div>
-                          )}
-                        </>
+                      {selectedItem.evidence && (
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence</h3>
+                          <ContentRenderer content={selectedItem.evidence} />
+                        </div>
                       )}
 
-                      {/* Difference Details */}
-                      {'difference' in selectedItem && (
-                        <>
-                          <div>
-                            <h3 className="text-sm font-medium text-gray-900 mb-2">Difference</h3>
-                            <ContentRenderer content={selectedItem.difference} />
-                          </div>
+                      {selectedItem.reason && (
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-900 mb-2">Reason</h3>
+                          <ContentRenderer content={selectedItem.reason} />
+                        </div>
+                      )}
 
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {selectedItem.prompt && (
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-900 mb-2">Prompt</h3>
+                          <ContentRenderer content={selectedItem.prompt} />
+                        </div>
+                      )}
+
+                      {(selectedItem.model_1_response || selectedItem.model_2_response) && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {selectedItem.model_1_response && (
                             <div>
-                              <h4 className="text-sm font-medium text-gray-900 mb-1">Category</h4>
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                {selectedItem.category}
-                              </span>
-                            </div>
-                            
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-900 mb-1">Impact</h4>
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                selectedItem.impact === 'High' ? 'bg-red-100 text-red-800' :
-                                selectedItem.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-green-100 text-green-800'
-                              }`}>
-                                {selectedItem.impact}
-                              </span>
-                            </div>
-
-                            {selectedItem.type && (
-                              <div>
-                                <h4 className="text-sm font-medium text-gray-900 mb-1">Type</h4>
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                  {selectedItem.type}
-                                </span>
-                              </div>
-                            )}
-
-                            {selectedItem.unexpected_behavior && (
-                              <div>
-                                <h4 className="text-sm font-medium text-gray-900 mb-1">Unexpected Behavior</h4>
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  selectedItem.unexpected_behavior.toLowerCase() === 'true' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-                                }`}>
-                                  {selectedItem.unexpected_behavior}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          {(selectedItem.coarse_cluster_label || selectedItem.fine_cluster_label) && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Cluster Hierarchy</h3>
-                              <div className="space-y-2">
-                                {selectedItem.coarse_cluster_label && (
-                                  <div>
-                                    <span className="text-xs text-gray-500">Coarse Cluster:</span>
-                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                                      {selectedItem.coarse_cluster_label}
-                                    </span>
-                                  </div>
-                                )}
-                                {selectedItem.fine_cluster_label && (
-                                  <div>
-                                    <span className="text-xs text-gray-500">Fine Cluster:</span>
-                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
-                                      {selectedItem.fine_cluster_label}
-                                    </span>
-                                  </div>
-                                )}
+                              <h3 className="text-sm font-medium text-gray-900 mb-2">
+                                {selectedItem.model_1_name} Response
+                              </h3>
+                              <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name || 'Model 1').backgroundColor} ${getModelColor(selectedItem.model_1_name || 'Model 1').borderColor}`}>
+                                <ContentRenderer content={selectedItem.model_1_response} className="!bg-transparent !p-0" />
                               </div>
                             </div>
                           )}
-
-                          {selectedItem.reason && (
+                          
+                          {selectedItem.model_2_response && (
                             <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Reason</h3>
-                              <ContentRenderer content={selectedItem.reason} />
+                              <h3 className="text-sm font-medium text-gray-900 mb-2">
+                                {selectedItem.model_2_name} Response
+                              </h3>
+                              <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name || 'Model 2').backgroundColor} ${getModelColor(selectedItem.model_2_name || 'Model 2').borderColor}`}>
+                                <ContentRenderer content={selectedItem.model_2_response} className="!bg-transparent !p-0" />
+                              </div>
                             </div>
                           )}
+                        </div>
+                      )}
 
-                          {selectedItem.prompt && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">Prompt</h3>
-                              <ContentRenderer content={selectedItem.prompt} />
-                            </div>
-                          )}
+                      {selectedItem.differences && (
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-900 mb-2">Differences</h3>
+                          <ContentRenderer content={selectedItem.differences} />
+                        </div>
+                      )}
 
-                          {(selectedItem.a_evidence || selectedItem.b_evidence) && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {selectedItem.a_evidence && (
-                                <div>
-                                  <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence A</h3>
-                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name || 'Model A').backgroundColor} ${getModelColor(selectedItem.model_1_name || 'Model A').borderColor}`}>
-                                    <ContentRenderer content={selectedItem.a_evidence} className="!bg-transparent !p-0" />
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {selectedItem.b_evidence && (
-                                <div>
-                                  <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence B</h3>
-                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name || 'Model B').backgroundColor} ${getModelColor(selectedItem.model_2_name || 'Model B').borderColor}`}>
-                                    <ContentRenderer content={selectedItem.b_evidence} className="!bg-transparent !p-0" />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {(selectedItem.model_1_response || selectedItem.model_2_response) && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {selectedItem.model_1_response && (
-                                <div>
-                                  <h3 className="text-sm font-medium text-gray-900 mb-2">
-                                    {selectedItem.model_1_name} Response
-                                  </h3>
-                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name || 'Model 1').backgroundColor} ${getModelColor(selectedItem.model_1_name || 'Model 1').borderColor}`}>
-                                    <ContentRenderer content={selectedItem.model_1_response} className="!bg-transparent !p-0" />
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {selectedItem.model_2_response && (
-                                <div>
-                                  <h3 className="text-sm font-medium text-gray-900 mb-2">
-                                    {selectedItem.model_2_name} Response
-                                  </h3>
-                                  <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name || 'Model 2').backgroundColor} ${getModelColor(selectedItem.model_2_name || 'Model 2').borderColor}`}>
-                                    <ContentRenderer content={selectedItem.model_2_response} className="!bg-transparent !p-0" />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </>
+                      {selectedItem.parsed_differences && (
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-900 mb-2">Parsed Differences</h3>
+                          <ContentRenderer content={selectedItem.parsed_differences} />
+                        </div>
                       )}
                     </div>
                     ) : (
