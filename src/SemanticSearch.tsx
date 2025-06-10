@@ -1,50 +1,63 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Search, Loader2, Eye, AlertCircle, Sparkles, Zap } from 'lucide-react';
-import { OpenAI } from 'openai';
 import { getCurrentDataSources, DATA_CONFIG } from './config/dataSources';
 import { readParquet } from 'parquet-wasm';
 import { NORMALIZED_DEMO_PROPERTIES } from './data/demoData';
 
-// Initialize OpenAI client only if API key is available
-const getApiKey = () => {
+// Safely get API key without throwing errors
+const getApiKey = (): string | null => {
   try {
-    // Check if we're in a browser environment and environment variables are available
-    if (typeof window !== 'undefined') {
-      // Try to access import.meta.env safely
-      const env = import.meta.env;
-      if (env && typeof env === 'object' && 'VITE_OPENAI_API_KEY' in env) {
-        return env.VITE_OPENAI_API_KEY;
-      }
+    // Simple check for environment variable
+    const env = import.meta.env;
+    const key = env?.VITE_OPENAI_API_KEY;
+    
+    if (!key || typeof key !== 'string' || key.trim() === '' || key === 'undefined' || key === 'null') {
+      return null;
     }
-    return null;
+    
+    return key.length > 10 ? key : null; // Basic sanity check
   } catch (error) {
-    console.warn('Could not access environment variables:', error);
+    console.log('ℹ️ Could not access environment variables (this is normal for demo mode)');
     return null;
   }
 };
 
+// Safe API key and client initialization
 const apiKey = getApiKey();
-const hasApiKey = !!(apiKey && 
-                    typeof apiKey === 'string' && 
-                    apiKey.trim() && 
-                    apiKey !== 'undefined' && 
-                    apiKey !== 'null' && 
-                    apiKey.length > 10); // Basic sanity check for API key length
+const hasApiKey = !!(apiKey && apiKey.trim().length > 10);
 
-let openai: OpenAI | null = null;
-try {
-  if (hasApiKey && apiKey) {
+// OpenAI client will be initialized asynchronously if needed
+let openai: any = null;
+let openaiInitialized = false;
+
+// Function to safely initialize OpenAI client
+const initializeOpenAI = async (): Promise<boolean> => {
+  if (openaiInitialized) return !!openai;
+  if (!hasApiKey || !apiKey) return false;
+  
+  try {
+    console.log('✅ Valid OpenAI API key found, initializing client...');
+    const { OpenAI } = await import('openai');
     openai = new OpenAI({
       apiKey: apiKey,
       dangerouslyAllowBrowser: true
     });
+    openaiInitialized = true;
     console.log('✅ OpenAI client initialized successfully');
-  } else {
-    console.log('ℹ️ No valid OpenAI API key found - running in demo mode');
+    return true;
+  } catch (error) {
+    console.warn('⚠️ Failed to initialize OpenAI client:', error);
+    openai = null;
+    openaiInitialized = true; // Mark as attempted
+    return false;
   }
-} catch (error) {
-  console.warn('⚠️ Failed to initialize OpenAI client (will run in demo mode):', error);
-  openai = null;
+};
+
+// Initialize logging
+if (hasApiKey) {
+  console.log('✅ Valid OpenAI API key found - will initialize when needed');
+} else {
+  console.log('ℹ️ No valid OpenAI API key found - running in demo mode');
 }
 
 interface PropertyDataWithEmbedding {
@@ -166,60 +179,40 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
   useEffect(() => {
     if (initError) return; // Don't proceed if there's an init error
     
-    try {
-      loadPrecomputedExamples();
-      
-      // Only load embedding data if we have an API key OR if precomputed examples fail to load
-      // This allows the app to work on GitHub Pages without large data files
-      if (hasApiKey) {
-        loadEmbeddingData();
-      } else {
-        // In demo mode, we'll load embedding data only if precomputed examples aren't available
-        // This provides a fallback but prioritizes the lightweight demo experience
-        setTimeout(() => {
-          if (precomputedExamples.length === 0) {
-            console.log('🔄 No precomputed examples found, attempting to load embedding data for fallback...');
-            loadEmbeddingData();
-          } else {
-            console.log('✅ Demo mode: Using precomputed examples with demo dataset');
-            // Use the small demo dataset for demonstration
-            setEmbeddingData(NORMALIZED_DEMO_PROPERTIES.map(prop => ({
-              ...prop,
-              similarity_score: undefined
-            })));
-            setDataLoading(false);
-            setDataError(null);
-          }
-        }, 1000); // Give precomputed examples time to load first
-      }
-    } catch (error) {
-      console.error('💥 Error in useEffect:', error);
-      setDataError(error instanceof Error ? error.message : 'Unknown error occurred');
-      setDataLoading(false);
-    }
-  }, [hasApiKey, initError]);
-
-  // Update the effect to handle precomputed examples loading
-  useEffect(() => {
-    if (initError) return;
-    
-    try {
-      if (!hasApiKey && precomputedExamples.length > 0) {
-        console.log('✅ Demo mode: Using precomputed examples with demo dataset');
-        // Use the small demo dataset for demonstration
-        setEmbeddingData(NORMALIZED_DEMO_PROPERTIES.map(prop => ({
-          ...prop,
-          similarity_score: undefined
-        })));
+    const safeLoadData = async () => {
+      try {
+        loadPrecomputedExamples();
+        
+        // Only load embedding data if we have an API key OR if precomputed examples fail to load
+        // This allows the app to work on GitHub Pages without large data files
+        if (hasApiKey) {
+          loadEmbeddingData();
+        } else {
+          // In demo mode, use embedded demo data immediately
+          console.log('✅ Demo mode: Using embedded demo dataset');
+          setEmbeddingData(NORMALIZED_DEMO_PROPERTIES.map(prop => ({
+            ...prop,
+            similarity_score: undefined
+          })));
+          setDataLoading(false);
+          setDataError(null);
+          
+          // Also try to load precomputed examples, but don't fail if they're not there
+          setTimeout(() => {
+            if (precomputedExamples.length === 0) {
+              console.log('🔄 No precomputed examples found, but using demo data instead');
+            }
+          }, 1000);
+        }
+      } catch (error) {
+        console.error('💥 Error in data loading:', error);
+        setDataError(error instanceof Error ? error.message : 'Unknown error occurred');
         setDataLoading(false);
-        setDataError(null);
       }
-    } catch (error) {
-      console.error('💥 Error loading demo data:', error);
-      setDataError(error instanceof Error ? error.message : 'Error loading demo data');
-      setDataLoading(false);
-    }
-  }, [precomputedExamples, hasApiKey, initError]);
+    };
+    
+    safeLoadData();
+  }, [hasApiKey, initError]);
 
   const loadPrecomputedExamples = async () => {
     try {
@@ -581,7 +574,9 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
       throw new Error('OpenAI API key not available - please configure VITE_OPENAI_API_KEY environment variable');
     }
     
-    if (!openai) {
+    // Initialize OpenAI client if not already done
+    const initialized = await initializeOpenAI();
+    if (!initialized || !openai) {
       throw new Error('OpenAI client not initialized - please check your configuration');
     }
     
