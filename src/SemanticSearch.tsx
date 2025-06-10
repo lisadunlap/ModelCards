@@ -383,7 +383,7 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
           }
         }
       }
-      // Method 5: Manual iteration if table has row access
+      // Method 5: Manual iteration if table has row access i am adding extra lines
       else if (typeof (table as any).get === 'function' && (table as any).length) {
         console.log('📝 Using manual row iteration...');
         const length = (table as any).length;
