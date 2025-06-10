@@ -104,25 +104,7 @@ const ModelDifferenceAnalyzer = () => {
       const Papa = (await import('papaparse')).default;
       console.log('✅ Papa Parse loaded successfully');
       
-      // Helper function to randomly sample rows from parsed data
-      const randomSample = (data: any[], maxRows: number = 10000): any[] => {
-        if (data.length <= maxRows) {
-          return data;
-        }
-        
-        console.log(`🎲 Randomly sampling ${maxRows} rows from ${data.length} total rows`);
-        const shuffled = [...data];
-        
-        // Fisher-Yates shuffle algorithm for random sampling
-        for (let i = shuffled.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-        }
-        
-        return shuffled.slice(0, maxRows);
-      };
-      
-      // Load and parse properties CSV with size check
+      // Load and parse properties CSV
       setLoadingStatus('Reading properties CSV content...');
       console.log('📖 Reading properties CSV content');
       const csvContent = await response.text();
@@ -132,7 +114,7 @@ const ModelDifferenceAnalyzer = () => {
       setLoadingStatus('Parsing properties CSV...');
       console.log('🔍 Parsing properties CSV');
       
-      // Parse without preview limit first to get full dataset for sampling
+      // Parse the full dataset
       const parsedData = Papa.parse(csvContent, {
         header: true,
         dynamicTyping: DATA_CONFIG.ENABLE_DYNAMIC_TYPING,
@@ -145,20 +127,8 @@ const ModelDifferenceAnalyzer = () => {
         console.warn('⚠️ Parsing errors in properties CSV:', parsedData.errors);
       }
       
-      // Apply random sampling if dataset is large
-      const MAX_ROWS = 10000;
-      let sampledData = parsedData.data || [];
-      let wasDataSampled = false;
-      
-      if (sampledData.length > MAX_ROWS) {
-        setLoadingStatus(`Dataset is large (${sampledData.length} rows). Randomly sampling ${MAX_ROWS} rows...`);
-        sampledData = randomSample(sampledData, MAX_ROWS);
-        wasDataSampled = true;
-        console.log(`🎯 Sampled ${sampledData.length} rows from properties CSV`);
-      }
-      
       setLoadingStatus('Processing properties data...');
-      const processedProperties = sampledData
+      const processedProperties = (parsedData.data || [])
         .filter((row: any) => row && row.property_description)
         .map((row: any) => ({
           prompt: row.prompt || '',
@@ -184,10 +154,6 @@ const ModelDifferenceAnalyzer = () => {
         })) as PropertyData[];
       
       console.log('✅ Properties CSV processed successfully. Final count:', processedProperties.length);
-      if (wasDataSampled) {
-        console.log('🎲 Properties CSV was randomly sampled to prevent performance issues');
-      }
-      setPropertyData(processedProperties);
       
       // Debug: Show all unique models found
       const allModels = Array.from(new Set([
@@ -199,16 +165,12 @@ const ModelDifferenceAnalyzer = () => {
       
       // Update loading status with sampling information
       let statusMessage = 'Data loading completed successfully!';
-      if (wasDataSampled) {
-        statusMessage += ' Large dataset was randomly sampled for optimal performance.';
-      }
       setLoadingStatus(statusMessage);
       
       console.log('🎉 All data loaded successfully!');
       console.log('📊 Final count - Properties:', processedProperties.length);
-      if (wasDataSampled) {
-        console.log('🎲 Data was randomly sampled to prevent performance issues');
-      }
+      
+      setPropertyData(processedProperties);
       
       setLoading(false);
       setError(null);

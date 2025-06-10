@@ -1,14 +1,15 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Search, Loader2, Eye, AlertCircle, Sparkles } from 'lucide-react';
+import { Search, Loader2, Eye, AlertCircle, Sparkles, Zap } from 'lucide-react';
 import { OpenAI } from 'openai';
 import { getCurrentDataSources, DATA_CONFIG } from './config/dataSources';
 import { readParquet } from 'parquet-wasm';
 
-// Initialize OpenAI client
-const openai = new OpenAI({
+// Initialize OpenAI client only if API key is available
+const hasApiKey = !!import.meta.env.VITE_OPENAI_API_KEY;
+const openai = hasApiKey ? new OpenAI({
   apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true // Only use this for client-side applications
-});
+  dangerouslyAllowBrowser: true
+}) : null;
 
 interface PropertyDataWithEmbedding {
   prompt: string;
@@ -39,6 +40,25 @@ interface SemanticSearchProps {
   onViewResponse?: (item: PropertyDataWithEmbedding) => void;
 }
 
+interface PrecomputedExample {
+  id: string;
+  query: string;
+  description: string;
+  embedding: number[];
+  metadata: {
+    model: string;
+    dimensions: number;
+    computed_at: string;
+  };
+}
+
+interface PrecomputedExamples {
+  generated_at: string;
+  model_used: string;
+  total_examples: number;
+  examples: PrecomputedExample[];
+}
+
 const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PropertyDataWithEmbedding[]>([]);
@@ -47,11 +67,32 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
   const [embeddingData, setEmbeddingData] = useState<PropertyDataWithEmbedding[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [precomputedExamples, setPrecomputedExamples] = useState<PrecomputedExample[]>([]);
 
-  // Load the parquet file with embeddings
+  // Load the parquet file with embeddings and precomputed examples
   useEffect(() => {
     loadEmbeddingData();
+    loadPrecomputedExamples();
   }, []);
+
+  const loadPrecomputedExamples = async () => {
+    try {
+      console.log('🔄 Loading precomputed examples...');
+      const response = await fetch('/precomputed-examples.json');
+      
+      if (!response.ok) {
+        console.warn('⚠️ Precomputed examples not found, search will require API key');
+        return;
+      }
+      
+      const data: PrecomputedExamples = await response.json();
+      setPrecomputedExamples(data.examples);
+      console.log(`✅ Loaded ${data.examples.length} precomputed examples`);
+      
+    } catch (error) {
+      console.warn('⚠️ Failed to load precomputed examples:', error);
+    }
+  };
 
   const loadEmbeddingData = async () => {
     try {
@@ -336,8 +377,12 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
 
   // Function to embed query using OpenAI API
   const embedQuery = async (query: string): Promise<number[]> => {
+    if (!openai) {
+      throw new Error('OpenAI client not initialized - API key required');
+    }
+    
     try {
-      const response = await openai.embeddings.create({
+      const response = await openai!.embeddings.create({
         model: "text-embedding-3-small",
         input: query,
       });
@@ -378,10 +423,58 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
     return a.reduce((sum, val, i) => sum + val * b[i], 0);
   };
 
+  // Perform semantic search with precomputed examples
+  const performSearchWithPrecomputed = useCallback(async (exampleEmbedding: number[], queryText: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+      setSearchQuery(queryText); // Update the search query display
+
+      console.log('🔍 Using precomputed embedding for:', queryText);
+
+      // Check stored embedding dimensions
+      const firstStoredEmbedding = embeddingData[0]?.embedding;
+      console.log('📋 Stored embedding dimensions:', firstStoredEmbedding?.length);
+      console.log('📏 Precomputed embedding dimensions:', exampleEmbedding.length);
+
+      if (exampleEmbedding.length !== firstStoredEmbedding?.length) {
+        throw new Error(`Embedding dimension mismatch: Precomputed has ${exampleEmbedding.length} dimensions, stored embeddings have ${firstStoredEmbedding?.length} dimensions.`);
+      }
+
+      // Calculate similarities using dot product (both embeddings are already normalized)
+      const resultsWithSimilarity = embeddingData
+        .map((item, index) => {
+          const similarity = dotProduct(exampleEmbedding, item.embedding!);
+          if (index < 3) { // Debug first few similarities
+            console.log(`💯 Similarity ${index}:`, similarity.toFixed(4), 'for:', item.property_description.substring(0, 50));
+          }
+          return {
+            ...item,
+            similarity_score: similarity
+          };
+        })
+        .sort((a, b) => (b.similarity_score || 0) - (a.similarity_score || 0))
+        .slice(0, 10);
+
+      console.log('🎯 Top 3 similarities:', resultsWithSimilarity.slice(0, 3).map(r => r.similarity_score?.toFixed(4)));
+      setSearchResults(resultsWithSimilarity);
+    } catch (error) {
+      console.error('Search error:', error);
+      setError(error instanceof Error ? error.message : 'Search failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [embeddingData]);
+
   // Perform semantic search
   const performSearch = useCallback(async () => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
+      return;
+    }
+
+    if (!hasApiKey || !openai) {
+      setError('OpenAI API key not configured. Please use the example queries below.');
       return;
     }
 
@@ -411,7 +504,6 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
       }
 
       // Calculate similarities using dot product (equivalent to cosine similarity for normalized vectors)
-      // This is more efficient than cosine similarity calculation
       const resultsWithSimilarity = embeddingData
         .map((item, index) => {
           const similarity = dotProduct(normalizedQueryEmbedding, item.embedding!);
@@ -481,77 +573,139 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
   return (
     <div className="space-y-6">
       {/* Introduction */}
-      <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg p-6">
+      <div className={`border rounded-lg p-6 ${hasApiKey ? 'bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'}`}>
         <div className="flex items-start space-x-3">
           <div className="flex-shrink-0">
-            <div className="flex items-center justify-center h-10 w-10 rounded-md bg-purple-500 text-white">
-              <Sparkles className="h-5 w-5" />
+            <div className={`flex items-center justify-center h-10 w-10 rounded-md text-white ${hasApiKey ? 'bg-purple-500' : 'bg-blue-500'}`}>
+              {hasApiKey ? <Sparkles className="h-5 w-5" /> : <Zap className="h-5 w-5" />}
             </div>
           </div>
           <div className="flex-1">
-            <h3 className="text-lg font-medium text-purple-900 mb-2">Semantic Search</h3>
-            <p className="text-sm text-purple-700 mb-3">
-              Search for model properties using natural language. Our AI will find the most semantically similar 
-              properties and conversations based on your query.
-            </p>
-            <div className="text-xs text-purple-600 bg-purple-100 rounded px-3 py-2">
-              <strong>How it works:</strong> Your query is embedded using OpenAI's text-embedding-3-small model, 
-              then we normalize all embeddings and use dot product similarity to find the 10 most similar property descriptions in our dataset.
-            </div>
+            <h3 className={`text-lg font-medium mb-2 ${hasApiKey ? 'text-purple-900' : 'text-blue-900'}`}>
+              {hasApiKey ? 'Semantic Search' : 'Demo Mode - Semantic Search'}
+            </h3>
+            {hasApiKey ? (
+              <div>
+                <p className="text-sm text-purple-700 mb-3">
+                  Search for model properties using natural language. Our AI will find the most semantically similar 
+                  properties and conversations based on your query.
+                </p>
+                <div className="text-xs text-purple-600 bg-purple-100 rounded px-3 py-2">
+                  <strong>How it works:</strong> Your query is embedded using OpenAI's text-embedding-3-small model, 
+                  then we use dot product similarity to find the 10 most similar property descriptions.
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-sm text-blue-700 mb-3">
+                  Try semantic search with precomputed example queries! These examples demonstrate how AI can find 
+                  semantically similar model properties without requiring your own OpenAI API key.
+                </p>
+                <div className="text-xs text-blue-600 bg-blue-100 rounded px-3 py-2 mb-3">
+                  <strong>Demo mode:</strong> Click the example buttons below to see semantic search in action. 
+                  Each example uses precomputed embeddings to find similar properties in the dataset.
+                </div>
+                {precomputedExamples.length > 0 && (
+                  <div className="text-xs text-green-700 bg-green-100 rounded px-3 py-2">
+                    ✅ {precomputedExamples.length} example queries available
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Search Interface */}
-      <div className="bg-white rounded-lg shadow-sm p-6 border">
-        <form onSubmit={handleSearchSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
-              Search for model properties or behaviors
-            </label>
-            <div className="relative">
-              <input
-                id="search"
-                type="text"
-                placeholder="e.g., 'models that are creative in storytelling' or 'handling of mathematical reasoning'"
-                className="w-full border border-gray-300 rounded-md px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                value={searchQuery}
-                onChange={handleSearchChange}
-              />
+      {/* Example Queries (always show, but prominence depends on API key availability) */}
+      {precomputedExamples.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm p-6 border">
+          <h4 className="font-medium text-gray-900 mb-3">
+            {hasApiKey ? 'Try these examples:' : 'Available example searches:'}
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {precomputedExamples.map((example) => (
+              <button
+                key={example.id}
+                onClick={() => performSearchWithPrecomputed(example.embedding, example.query)}
+                disabled={loading}
+                className="text-left p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="font-medium text-gray-900 mb-1">"{example.query}"</div>
+                <div className="text-sm text-gray-600">{example.description}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Search Interface (only show if API key is available) */}
+      {hasApiKey && (
+        <div className="bg-white rounded-lg shadow-sm p-6 border">
+          <form onSubmit={handleSearchSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
+                Search for model properties or behaviors
+              </label>
+              <div className="relative">
+                <input
+                  id="search"
+                  type="text"
+                  placeholder="e.g., 'models that are creative in storytelling' or 'handling of mathematical reasoning'"
+                  className="w-full border border-gray-300 rounded-md px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                />
+                <button
+                  type="submit"
+                  disabled={loading || !searchQuery.trim()}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 text-gray-400 hover:text-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Search className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-600">
+                {embeddingData.length.toLocaleString()} properties available for search
+              </div>
               <button
                 type="submit"
                 disabled={loading || !searchQuery.trim()}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 text-gray-400 hover:text-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-purple-600 text-white px-6 py-2 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {loading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <Search className="h-5 w-5" />
-                )}
+                {loading ? 'Searching...' : 'Search'}
               </button>
             </div>
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              {embeddingData.length.toLocaleString()} properties available for search
-            </div>
-            <button
-              type="submit"
-              disabled={loading || !searchQuery.trim()}
-              className="bg-purple-600 text-white px-6 py-2 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loading ? 'Searching...' : 'Search'}
-            </button>
-          </div>
-        </form>
+          </form>
 
-        {error && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-            {error}
+          {error && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* API Key Missing Notice (only show if no API key and no precomputed examples) */}
+      {!hasApiKey && precomputedExamples.length === 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="font-medium text-yellow-900">OpenAI API Key Required</h4>
+              <p className="text-sm text-yellow-700 mt-1">
+                To use custom semantic search, please add your OpenAI API key to the environment variables. 
+                Alternatively, precomputed examples can be generated using the precompute script.
+              </p>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Search Results */}
       {searchResults.length > 0 && (
