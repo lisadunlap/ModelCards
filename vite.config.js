@@ -1,14 +1,29 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/',
+  base: './', // Use relative paths for GitHub Pages
   build: {
-    outDir: 'dist'
+    outDir: 'dist',
+    assetsDir: 'assets',
+    // Don't include large files in the build by default
+    rollupOptions: {
+      external: (id) => {
+        // Exclude large CSV/Parquet files from the build
+        if (id.includes('.csv') || id.includes('.parquet')) {
+          console.log('Excluding large file from build:', id);
+          return false; // Actually include them but warn
+        }
+        return false;
+      }
+    }
   },
   server: {
-    host: '0.0.0.0',
-    port: 5173
+    fs: {
+      // Allow serving files from public directory
+      allow: ['..']
+    }
   }
 })
