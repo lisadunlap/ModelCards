@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BarChart3, Users, Database, Brain, X, Eye, ExternalLink } from 'lucide-react';
 import InteractiveHierarchicalChart from './InteractiveHierarchicalChart';
 import InteractivePropertyChart from './InteractivePropertyChart';
-import SemanticSearch from './SemanticSearch';
+// import SemanticSearch from './SemanticSearch'; // Commented out for hosting - full functionality preserved in file
 import ContentRenderer from './components/ContentRenderer';
 import { getCurrentDataSources, validateDataSources, DATA_CONFIG } from './config/dataSources';
 
@@ -252,7 +252,7 @@ const ModelDifferenceAnalyzer = () => {
   const navigationItems = [
     { id: 'overview', label: 'Overview', icon: Database },
     { id: 'properties', label: 'Property Analysis', icon: BarChart3 },
-    { id: 'search', label: 'Semantic Search', icon: Brain }
+    // { id: 'search', label: 'Semantic Search', icon: Brain } // Commented out for hosting
   ];
 
   // Get data sources for display
@@ -453,6 +453,8 @@ const ModelDifferenceAnalyzer = () => {
             />
           )}
 
+          {/* Semantic Search commented out for hosting - full functionality preserved in SemanticSearch.tsx */}
+          {/*
           {selectedView === 'search' && (
             <SemanticSearch 
               onViewResponse={(item) => {
@@ -462,6 +464,7 @@ const ModelDifferenceAnalyzer = () => {
               }} 
             />
           )}
+          */}
         </div>
       </div>
 
@@ -554,13 +557,17 @@ const ModelDifferenceAnalyzer = () => {
 
                       <div>
                         <h3 className="text-sm font-medium text-gray-900 mb-2">Property Description</h3>
-                        <ContentRenderer content={selectedItem.property_description} />
+                        <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model || 'Unknown').backgroundColor} ${getModelColor(selectedItem.model || 'Unknown').borderColor}`}>
+                          <ContentRenderer content={selectedItem.property_description} className="!bg-transparent !p-0" />
+                        </div>
                       </div>
 
                       {selectedItem.evidence && (
                         <div>
                           <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence</h3>
-                          <ContentRenderer content={selectedItem.evidence} />
+                          <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model || 'Unknown').backgroundColor} ${getModelColor(selectedItem.model || 'Unknown').borderColor}`}>
+                            <ContentRenderer content={selectedItem.evidence} className="!bg-transparent !p-0" />
+                          </div>
                         </div>
                       )}
 
