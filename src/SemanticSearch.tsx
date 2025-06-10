@@ -3,6 +3,7 @@ import { Search, Loader2, Eye, AlertCircle, Sparkles, Zap } from 'lucide-react';
 import { OpenAI } from 'openai';
 import { getCurrentDataSources, DATA_CONFIG } from './config/dataSources';
 import { readParquet } from 'parquet-wasm';
+import { NORMALIZED_DEMO_PROPERTIES } from './data/demoData';
 
 // Initialize OpenAI client only if API key is available
 const hasApiKey = !!import.meta.env.VITE_OPENAI_API_KEY;
@@ -71,14 +72,51 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
 
   // Load the parquet file with embeddings and precomputed examples
   useEffect(() => {
-    loadEmbeddingData();
     loadPrecomputedExamples();
-  }, []);
+    
+    // Only load embedding data if we have an API key OR if precomputed examples fail to load
+    // This allows the app to work on GitHub Pages without large data files
+    if (hasApiKey) {
+      loadEmbeddingData();
+    } else {
+      // In demo mode, we'll load embedding data only if precomputed examples aren't available
+      // This provides a fallback but prioritizes the lightweight demo experience
+      setTimeout(() => {
+        if (precomputedExamples.length === 0) {
+          console.log('🔄 No precomputed examples found, attempting to load embedding data for fallback...');
+          loadEmbeddingData();
+        } else {
+          console.log('✅ Demo mode: Using precomputed examples with demo dataset');
+          // Use the small demo dataset for demonstration
+          setEmbeddingData(NORMALIZED_DEMO_PROPERTIES.map(prop => ({
+            ...prop,
+            similarity_score: undefined
+          })));
+          setDataLoading(false);
+          setDataError(null);
+        }
+      }, 1000); // Give precomputed examples time to load first
+    }
+  }, [hasApiKey]);
+
+  // Update the effect to handle precomputed examples loading
+  useEffect(() => {
+    if (!hasApiKey && precomputedExamples.length > 0) {
+      console.log('✅ Demo mode: Using precomputed examples with demo dataset');
+      // Use the small demo dataset for demonstration
+      setEmbeddingData(NORMALIZED_DEMO_PROPERTIES.map(prop => ({
+        ...prop,
+        similarity_score: undefined
+      })));
+      setDataLoading(false);
+      setDataError(null);
+    }
+  }, [precomputedExamples, hasApiKey]);
 
   const loadPrecomputedExamples = async () => {
     try {
       console.log('🔄 Loading precomputed examples...');
-      const response = await fetch('/precomputed-examples.json');
+      const response = await fetch('./precomputed-examples.json');
       
       if (!response.ok) {
         console.warn('⚠️ Precomputed examples not found, search will require API key');
@@ -432,6 +470,13 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
 
       console.log('🔍 Using precomputed embedding for:', queryText);
 
+      // Check if we have embedding data loaded
+      if (embeddingData.length === 0) {
+        setError('No embedding data available. Please wait for data to load or check your configuration.');
+        setSearchResults([]);
+        return;
+      }
+
       // Check stored embedding dimensions
       const firstStoredEmbedding = embeddingData[0]?.embedding;
       console.log('📋 Stored embedding dimensions:', firstStoredEmbedding?.length);
@@ -464,7 +509,7 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
     } finally {
       setLoading(false);
     }
-  }, [embeddingData]);
+  }, [embeddingData, hasApiKey]);
 
   // Perform semantic search
   const performSearch = useCallback(async () => {

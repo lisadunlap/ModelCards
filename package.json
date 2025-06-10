@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "precompute-examples": "node scripts/precompute-examples.js"
+    "precompute-examples": "node scripts/precompute-examples.js",
+    "generate-demo-embeddings": "node scripts/generate-demo-embeddings.js"
   },
   "dependencies": {
     "lucide-react": "^0.263.1",
