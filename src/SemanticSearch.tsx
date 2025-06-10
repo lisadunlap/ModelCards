@@ -6,11 +6,46 @@ import { readParquet } from 'parquet-wasm';
 import { NORMALIZED_DEMO_PROPERTIES } from './data/demoData';
 
 // Initialize OpenAI client only if API key is available
-const hasApiKey = !!import.meta.env.VITE_OPENAI_API_KEY;
-const openai = hasApiKey ? new OpenAI({
-  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true
-}) : null;
+const getApiKey = () => {
+  try {
+    // Check if we're in a browser environment and environment variables are available
+    if (typeof window !== 'undefined') {
+      // Try to access import.meta.env safely
+      const env = import.meta.env;
+      if (env && typeof env === 'object' && 'VITE_OPENAI_API_KEY' in env) {
+        return env.VITE_OPENAI_API_KEY;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.warn('Could not access environment variables:', error);
+    return null;
+  }
+};
+
+const apiKey = getApiKey();
+const hasApiKey = !!(apiKey && 
+                    typeof apiKey === 'string' && 
+                    apiKey.trim() && 
+                    apiKey !== 'undefined' && 
+                    apiKey !== 'null' && 
+                    apiKey.length > 10); // Basic sanity check for API key length
+
+let openai: OpenAI | null = null;
+try {
+  if (hasApiKey && apiKey) {
+    openai = new OpenAI({
+      apiKey: apiKey,
+      dangerouslyAllowBrowser: true
+    });
+    console.log('✅ OpenAI client initialized successfully');
+  } else {
+    console.log('ℹ️ No valid OpenAI API key found - running in demo mode');
+  }
+} catch (error) {
+  console.warn('⚠️ Failed to initialize OpenAI client (will run in demo mode):', error);
+  openai = null;
+}
 
 interface PropertyDataWithEmbedding {
   prompt: string;
@@ -69,49 +104,122 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
   const [precomputedExamples, setPrecomputedExamples] = useState<PrecomputedExample[]>([]);
+  const [initError, setInitError] = useState<string | null>(null);
+
+  // Check for initialization errors
+  React.useEffect(() => {
+    try {
+      // Test basic functionality
+      console.log('🔄 Initializing SemanticSearch component...');
+      
+      // Check if we're in a browser environment
+      if (typeof window === 'undefined') {
+        setInitError('Component must run in browser environment');
+        return;
+      }
+      
+      console.log('✅ SemanticSearch component initialized successfully');
+      console.log(`🔑 API key available: ${hasApiKey ? 'Yes' : 'No (demo mode)'}`);
+      
+      // Ensure we always have some demo examples as a last resort
+      if (!hasApiKey) {
+        setTimeout(() => {
+          if (precomputedExamples.length === 0) {
+            console.log('🔄 No examples loaded, creating emergency fallback...');
+            // Create absolutely minimal fallback examples
+            const emergencyExamples = [
+              {
+                id: 'demo-1',
+                query: 'scientific explanation',
+                description: 'Demo: Find properties related to scientific explanations',
+                embedding: NORMALIZED_DEMO_PROPERTIES[0]?.embedding || new Array(10).fill(0.1),
+                metadata: { model: 'demo', dimensions: 10, computed_at: new Date().toISOString() }
+              },
+              {
+                id: 'demo-2', 
+                query: 'creative writing',
+                description: 'Demo: Find properties related to creative writing',
+                embedding: NORMALIZED_DEMO_PROPERTIES[1]?.embedding || new Array(10).fill(-0.1),
+                metadata: { model: 'demo', dimensions: 10, computed_at: new Date().toISOString() }
+              },
+              {
+                id: 'demo-3',
+                query: 'safety refusal',
+                description: 'Demo: Find properties related to safety and refusals',
+                embedding: NORMALIZED_DEMO_PROPERTIES[2]?.embedding || new Array(10).fill(0.2),
+                metadata: { model: 'demo', dimensions: 10, computed_at: new Date().toISOString() }
+              }
+            ];
+            setPrecomputedExamples(emergencyExamples);
+            console.log('✅ Emergency fallback examples created');
+          }
+        }, 3000); // Give other loading mechanisms time to work first
+      }
+      
+    } catch (error) {
+      console.error('💥 Initialization error:', error);
+      setInitError(error instanceof Error ? error.message : 'Unknown initialization error');
+    }
+  }, [hasApiKey, precomputedExamples.length]);
 
   // Load the parquet file with embeddings and precomputed examples
   useEffect(() => {
-    loadPrecomputedExamples();
+    if (initError) return; // Don't proceed if there's an init error
     
-    // Only load embedding data if we have an API key OR if precomputed examples fail to load
-    // This allows the app to work on GitHub Pages without large data files
-    if (hasApiKey) {
-      loadEmbeddingData();
-    } else {
-      // In demo mode, we'll load embedding data only if precomputed examples aren't available
-      // This provides a fallback but prioritizes the lightweight demo experience
-      setTimeout(() => {
-        if (precomputedExamples.length === 0) {
-          console.log('🔄 No precomputed examples found, attempting to load embedding data for fallback...');
-          loadEmbeddingData();
-        } else {
-          console.log('✅ Demo mode: Using precomputed examples with demo dataset');
-          // Use the small demo dataset for demonstration
-          setEmbeddingData(NORMALIZED_DEMO_PROPERTIES.map(prop => ({
-            ...prop,
-            similarity_score: undefined
-          })));
-          setDataLoading(false);
-          setDataError(null);
-        }
-      }, 1000); // Give precomputed examples time to load first
+    try {
+      loadPrecomputedExamples();
+      
+      // Only load embedding data if we have an API key OR if precomputed examples fail to load
+      // This allows the app to work on GitHub Pages without large data files
+      if (hasApiKey) {
+        loadEmbeddingData();
+      } else {
+        // In demo mode, we'll load embedding data only if precomputed examples aren't available
+        // This provides a fallback but prioritizes the lightweight demo experience
+        setTimeout(() => {
+          if (precomputedExamples.length === 0) {
+            console.log('🔄 No precomputed examples found, attempting to load embedding data for fallback...');
+            loadEmbeddingData();
+          } else {
+            console.log('✅ Demo mode: Using precomputed examples with demo dataset');
+            // Use the small demo dataset for demonstration
+            setEmbeddingData(NORMALIZED_DEMO_PROPERTIES.map(prop => ({
+              ...prop,
+              similarity_score: undefined
+            })));
+            setDataLoading(false);
+            setDataError(null);
+          }
+        }, 1000); // Give precomputed examples time to load first
+      }
+    } catch (error) {
+      console.error('💥 Error in useEffect:', error);
+      setDataError(error instanceof Error ? error.message : 'Unknown error occurred');
+      setDataLoading(false);
     }
-  }, [hasApiKey]);
+  }, [hasApiKey, initError]);
 
   // Update the effect to handle precomputed examples loading
   useEffect(() => {
-    if (!hasApiKey && precomputedExamples.length > 0) {
-      console.log('✅ Demo mode: Using precomputed examples with demo dataset');
-      // Use the small demo dataset for demonstration
-      setEmbeddingData(NORMALIZED_DEMO_PROPERTIES.map(prop => ({
-        ...prop,
-        similarity_score: undefined
-      })));
+    if (initError) return;
+    
+    try {
+      if (!hasApiKey && precomputedExamples.length > 0) {
+        console.log('✅ Demo mode: Using precomputed examples with demo dataset');
+        // Use the small demo dataset for demonstration
+        setEmbeddingData(NORMALIZED_DEMO_PROPERTIES.map(prop => ({
+          ...prop,
+          similarity_score: undefined
+        })));
+        setDataLoading(false);
+        setDataError(null);
+      }
+    } catch (error) {
+      console.error('💥 Error loading demo data:', error);
+      setDataError(error instanceof Error ? error.message : 'Error loading demo data');
       setDataLoading(false);
-      setDataError(null);
     }
-  }, [precomputedExamples, hasApiKey]);
+  }, [precomputedExamples, hasApiKey, initError]);
 
   const loadPrecomputedExamples = async () => {
     try {
@@ -119,16 +227,70 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
       const response = await fetch('./precomputed-examples.json');
       
       if (!response.ok) {
-        console.warn('⚠️ Precomputed examples not found, search will require API key');
+        console.warn('⚠️ Precomputed examples file not found, using minimal fallback examples');
+        // Provide minimal fallback examples
+        const fallbackExamples = [
+          {
+            id: 'incorrect-reasoning',
+            query: 'incorrect reasoning',
+            description: 'Find properties related to logical errors or flawed reasoning',
+            embedding: NORMALIZED_DEMO_PROPERTIES[0]?.embedding || [],
+            metadata: {
+              model: 'text-embedding-3-small',
+              dimensions: 1536,
+              computed_at: new Date().toISOString()
+            }
+          },
+          {
+            id: 'friendly-tone',
+            query: 'friendly tone',
+            description: 'Find properties related to conversational style and friendliness',
+            embedding: NORMALIZED_DEMO_PROPERTIES[1]?.embedding || [],
+            metadata: {
+              model: 'text-embedding-3-small',
+              dimensions: 1536,
+              computed_at: new Date().toISOString()
+            }
+          },
+          {
+            id: 'refusal-to-answer',
+            query: 'refusal to answer',
+            description: 'Find properties related to models declining to respond',
+            embedding: NORMALIZED_DEMO_PROPERTIES[2]?.embedding || [],
+            metadata: {
+              model: 'text-embedding-3-small',
+              dimensions: 1536,
+              computed_at: new Date().toISOString()
+            }
+          }
+        ];
+        setPrecomputedExamples(fallbackExamples);
+        console.log(`✅ Using ${fallbackExamples.length} fallback examples`);
         return;
       }
       
       const data: PrecomputedExamples = await response.json();
       setPrecomputedExamples(data.examples);
-      console.log(`✅ Loaded ${data.examples.length} precomputed examples`);
+      console.log(`✅ Loaded ${data.examples.length} precomputed examples from file`);
       
     } catch (error) {
-      console.warn('⚠️ Failed to load precomputed examples:', error);
+      console.warn('⚠️ Failed to load precomputed examples, using minimal fallback:', error);
+      // Even if everything fails, provide some basic examples
+      const fallbackExamples = [
+        {
+          id: 'demo-search',
+          query: 'demo search',
+          description: 'Demonstration of semantic search functionality',
+          embedding: new Array(10).fill(0).map(() => Math.random() - 0.5), // Random 10-dim vector
+          metadata: {
+            model: 'fallback',
+            dimensions: 10,
+            computed_at: new Date().toISOString()
+          }
+        }
+      ];
+      setPrecomputedExamples(fallbackExamples);
+      console.log('✅ Using minimal fallback example');
     }
   };
 
@@ -415,12 +577,16 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
 
   // Function to embed query using OpenAI API
   const embedQuery = async (query: string): Promise<number[]> => {
+    if (!hasApiKey) {
+      throw new Error('OpenAI API key not available - please configure VITE_OPENAI_API_KEY environment variable');
+    }
+    
     if (!openai) {
-      throw new Error('OpenAI client not initialized - API key required');
+      throw new Error('OpenAI client not initialized - please check your configuration');
     }
     
     try {
-      const response = await openai!.embeddings.create({
+      const response = await openai.embeddings.create({
         model: "text-embedding-3-small",
         input: query,
       });
@@ -583,6 +749,29 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
     e.preventDefault();
     performSearch();
   };
+
+  if (initError) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+        <div className="flex items-start space-x-3">
+          <AlertCircle className="h-5 w-5 text-red-500 mt-0.5" />
+          <div className="flex-1">
+            <h4 className="font-medium text-red-900">Initialization Error</h4>
+            <p className="text-sm text-red-700 mt-1">{initError}</p>
+            <button
+              onClick={() => {
+                setInitError(null);
+                window.location.reload();
+              }}
+              className="mt-3 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors text-sm"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (dataLoading) {
     return (
