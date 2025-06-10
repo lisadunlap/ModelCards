@@ -6,8 +6,7 @@
  */
 
 export const DATA_SOURCES = {
-  // Main Parquet files for model differences and properties (much smaller than CSV!)
-  DIFFERENCES_CSV: '/qwen2_mistral_small.csv',
+  // Main Parquet files for model properties
   PROPERTIES_CSV: '/all_one_sided_comparisons_clustered_4.csv',
   
   // Embedding data - Using Parquet for better performance and smaller size
@@ -49,7 +48,6 @@ export const DATA_CONFIG = {
  */
 export const getCurrentDataSources = () => {
   return {
-    differences: DATA_SOURCES.DIFFERENCES_CSV,
     properties: DATA_SOURCES.PROPERTIES_CSV,
     embeddings: DATA_CONFIG.USE_PARQUET ? DATA_SOURCES.EMBEDDINGS_PARQUET : DATA_SOURCES.EMBEDDINGS_CSV,
   };
@@ -62,7 +60,6 @@ export const validateDataSources = () => {
   const sources = getCurrentDataSources();
   const missing = [];
   
-  if (!sources.differences) missing.push('differences CSV');
   if (!sources.properties) missing.push('properties CSV');
   if (!sources.embeddings) missing.push('embeddings data');
   
