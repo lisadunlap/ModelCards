@@ -1,64 +1,12 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Search, Loader2, Eye, AlertCircle, Sparkles, Zap } from 'lucide-react';
 import { getCurrentDataSources, DATA_CONFIG } from './config/dataSources';
+import { getOpenAIApiKey, hasValidApiKey, initializeOpenAIClient, getOpenAIClient } from './config/apiConfig';
 import { readParquet } from 'parquet-wasm';
 import { NORMALIZED_DEMO_PROPERTIES } from './data/demoData';
 
-// Safely get API key without throwing errors
-const getApiKey = (): string | null => {
-  try {
-    // Simple check for environment variable
-    const env = import.meta.env;
-    const key = env?.VITE_OPENAI_API_KEY;
-    
-    if (!key || typeof key !== 'string' || key.trim() === '' || key === 'undefined' || key === 'null') {
-      return null;
-    }
-    
-    return key.length > 10 ? key : null; // Basic sanity check
-  } catch (error) {
-    console.log('ℹ️ Could not access environment variables (this is normal for demo mode)');
-    return null;
-  }
-};
-
-// Safe API key and client initialization
-const apiKey = getApiKey();
-const hasApiKey = !!(apiKey && apiKey.trim().length > 10);
-
-// OpenAI client will be initialized asynchronously if needed
-let openai: any = null;
-let openaiInitialized = false;
-
-// Function to safely initialize OpenAI client
-const initializeOpenAI = async (): Promise<boolean> => {
-  if (openaiInitialized) return !!openai;
-  if (!hasApiKey || !apiKey) return false;
-  
-  try {
-    console.log('✅ Valid OpenAI API key found, initializing client...');
-    const { OpenAI } = await import('openai');
-    openai = new OpenAI({
-      apiKey: apiKey,
-      dangerouslyAllowBrowser: true
-    });
-    openaiInitialized = true;
-    console.log('✅ OpenAI client initialized successfully');
-    return true;
-  } catch (error) {
-    console.warn('⚠️ Failed to initialize OpenAI client:', error);
-    openai = null;
-    openaiInitialized = true; // Mark as attempted
-    return false;
-  }
-};
-
-// Initialize logging
-if (hasApiKey) {
-  console.log('✅ Valid OpenAI API key found - will initialize when needed');
-} else {
-  console.log('ℹ️ No valid OpenAI API key found - running in demo mode');
-}
+// Use centralized API configuration
+const hasApiKey = hasValidApiKey();
 
 interface PropertyDataWithEmbedding {
   prompt: string;
@@ -571,11 +519,12 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
   // Function to embed query using OpenAI API
   const embedQuery = async (query: string): Promise<number[]> => {
     if (!hasApiKey) {
-      throw new Error('OpenAI API key not available - please configure VITE_OPENAI_API_KEY environment variable');
+      throw new Error('OpenAI API key not available - please configure OPENAI_API_KEY environment variable');
     }
     
     // Initialize OpenAI client if not already done
-    const initialized = await initializeOpenAI();
+    const initialized = await initializeOpenAIClient();
+    const openai = getOpenAIClient();
     if (!initialized || !openai) {
       throw new Error('OpenAI client not initialized - please check your configuration');
     }
@@ -679,7 +628,7 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
       return;
     }
 
-    if (!hasApiKey || !openai) {
+    if (!hasApiKey || !getOpenAIClient()) {
       setError('OpenAI API key not configured. Please use the example queries below.');
       return;
     }

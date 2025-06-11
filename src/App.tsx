@@ -5,6 +5,7 @@ import InteractivePropertyChart from './InteractivePropertyChart';
 import SemanticSearch from './SemanticSearch';
 import ContentRenderer from './components/ContentRenderer';
 import { getCurrentDataSources, validateDataSources, DATA_CONFIG } from './config/dataSources';
+import { initializeModelColors, getModelColor } from './config/modelColors';
 
 interface PropertyData {
   prompt: string;
@@ -39,9 +40,6 @@ const ModelDifferenceAnalyzer = () => {
   // Add state for side panel
   const [selectedItem, setSelectedItem] = useState<PropertyData | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  // Track model color assignments to detect collisions
-  const modelColorAssignments = React.useRef<Map<string, { color: string; models: string[] }>>(new Map());
 
   // Add error boundary state
   const [hasRenderError, setHasRenderError] = useState(false);
@@ -172,6 +170,14 @@ const ModelDifferenceAnalyzer = () => {
       
       setPropertyData(processedProperties);
       
+      // Initialize global model colors
+      const allUniqueModels = Array.from(new Set([
+        ...processedProperties.map(p => p.model).filter(name => name && name !== 'Unknown'),
+        ...processedProperties.map(p => p.model_1_name).filter(name => name && name !== 'Unknown' && name !== ''),
+        ...processedProperties.map(p => p.model_2_name).filter(name => name && name !== 'Unknown' && name !== ''),
+      ]));
+      initializeModelColors(allUniqueModels);
+      
       setLoading(false);
       setError(null);
     } catch (error) {
@@ -268,77 +274,6 @@ const ModelDifferenceAnalyzer = () => {
   const closeSidebar = () => {
     setSidebarOpen(false);
     setSelectedItem(null);
-  };
-
-  // Generate light background color for model identification
-  const getModelColor = (modelName: string | undefined | null): { backgroundColor: string; borderColor: string } => {
-    if (!modelName || modelName === 'Unknown') {
-      return { backgroundColor: 'bg-neutral-50', borderColor: 'border-neutral-200' };
-    }
-    
-    // Enhanced hash function with better collision resistance
-    let hash = 0;
-    const str = modelName.toLowerCase().trim(); // Normalize case and trim whitespace
-    
-    // Use multiple hash passes for better distribution
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
-    }
-    
-    // Additional mixing with different constants to reduce patterns
-    hash = Math.abs(hash);
-    const mixed1 = (hash * 2654435761) % (2 ** 32); // Large prime multiplier
-    const mixed2 = (mixed1 * 16777619) % (2 ** 32);  // FNV prime for additional mixing
-    const finalHash = mixed2 ^ (mixed2 >>> 16);       // XOR with shifted version for better distribution
-    
-    // Vibrant color schemes only - no grey/neutral colors to avoid confusion
-    const colorSchemes = [
-      { backgroundColor: 'bg-blue-50', borderColor: 'border-blue-200' },
-      { backgroundColor: 'bg-green-50', borderColor: 'border-green-200' },
-      { backgroundColor: 'bg-purple-50', borderColor: 'border-purple-200' },
-      { backgroundColor: 'bg-orange-50', borderColor: 'border-orange-200' },
-      { backgroundColor: 'bg-pink-50', borderColor: 'border-pink-200' },
-      { backgroundColor: 'bg-indigo-50', borderColor: 'border-indigo-200' },
-      { backgroundColor: 'bg-teal-50', borderColor: 'border-teal-200' },
-      { backgroundColor: 'bg-cyan-50', borderColor: 'border-cyan-200' },
-      { backgroundColor: 'bg-emerald-50', borderColor: 'border-emerald-200' },
-      { backgroundColor: 'bg-amber-50', borderColor: 'border-amber-200' },
-      { backgroundColor: 'bg-lime-50', borderColor: 'border-lime-200' },
-      { backgroundColor: 'bg-rose-50', borderColor: 'border-rose-200' },
-      { backgroundColor: 'bg-violet-50', borderColor: 'border-violet-200' },
-      { backgroundColor: 'bg-sky-50', borderColor: 'border-sky-200' },
-      { backgroundColor: 'bg-red-50', borderColor: 'border-red-200' },
-      { backgroundColor: 'bg-yellow-50', borderColor: 'border-yellow-200' },
-      { backgroundColor: 'bg-fuchsia-50', borderColor: 'border-fuchsia-200' },
-      { backgroundColor: 'bg-emerald-100', borderColor: 'border-emerald-300' }, // Slightly deeper variants
-      { backgroundColor: 'bg-blue-100', borderColor: 'border-blue-300' },
-      { backgroundColor: 'bg-purple-100', borderColor: 'border-purple-300' },
-    ];
-    
-    const colorIndex = finalHash % colorSchemes.length;
-    const selectedColor = colorSchemes[colorIndex];
-    
-    // Track color assignments to detect collisions
-    const colorKey = selectedColor.backgroundColor;
-    const assignments = modelColorAssignments.current;
-    
-    if (assignments.has(colorKey)) {
-      const existing = assignments.get(colorKey)!;
-      if (!existing.models.includes(modelName)) {
-        existing.models.push(modelName);
-        // Log collision warning
-        console.warn(`🚨 COLOR COLLISION DETECTED! Color ${colorKey} assigned to multiple models:`, existing.models);
-      }
-    } else {
-      assignments.set(colorKey, { color: colorKey, models: [modelName] });
-    }
-    
-    // Enhanced debug logging to track potential collisions and help identify grey assignments
-    console.log(`🎨 Model Color Assignment: "${modelName}" -> Hash: ${hash} -> Final: ${finalHash} -> Index: ${colorIndex} -> ${selectedColor.backgroundColor}`);
-    
-    return selectedColor;
   };
 
   return (
@@ -508,7 +443,7 @@ const ModelDifferenceAnalyzer = () => {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <h4 className="text-sm font-medium text-gray-900 mb-1">Model</h4>
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getModelColor(selectedItem.model).badgeColor} ${getModelColor(selectedItem.model).textColor}`}>
                             {selectedItem.model}
                           </span>
                         </div>
@@ -554,20 +489,26 @@ const ModelDifferenceAnalyzer = () => {
 
                       <div>
                         <h3 className="text-sm font-medium text-gray-900 mb-2">Property Description</h3>
-                        <ContentRenderer content={selectedItem.property_description} />
+                        <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model).backgroundColor} ${getModelColor(selectedItem.model).borderColor}`}>
+                          <ContentRenderer content={selectedItem.property_description} className="!bg-transparent !p-0" />
+                        </div>
                       </div>
 
                       {selectedItem.evidence && (
                         <div>
                           <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence</h3>
-                          <ContentRenderer content={selectedItem.evidence} />
+                          <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model).backgroundColor} ${getModelColor(selectedItem.model).borderColor}`}>
+                            <ContentRenderer content={selectedItem.evidence} className="!bg-transparent !p-0" />
+                          </div>
                         </div>
                       )}
 
                       {selectedItem.reason && (
                         <div>
                           <h3 className="text-sm font-medium text-gray-900 mb-2">Reason</h3>
-                          <ContentRenderer content={selectedItem.reason} />
+                          <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model).backgroundColor} ${getModelColor(selectedItem.model).borderColor}`}>
+                            <ContentRenderer content={selectedItem.reason} className="!bg-transparent !p-0" />
+                          </div>
                         </div>
                       )}
 

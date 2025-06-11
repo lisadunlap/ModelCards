@@ -1,13 +1,8 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { OpenAI } from 'openai';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { ChevronRight, ArrowLeft, Eye, Home, ChevronLeft, ChevronDown, Filter, BarChart3, Grid, Users, TrendingUp } from 'lucide-react';
-
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true // Only use this for client-side applications
-});
+import { getOpenAIApiKey, hasValidApiKey, initializeOpenAIClient, getOpenAIClient } from './config/apiConfig';
+import { getModelColor, getModelChartColors, getAllModelNames } from './config/modelColors';
 
 interface PropertyData {
   prompt: string;
@@ -47,74 +42,6 @@ interface DrillState {
 }
 
 type ViewMode = 'all-models' | 'selected-models' | 'heatmap' | 'top-models';
-
-// Generate distinct colors for multiple models
-const generateModelColors = (modelCount: number): string[] => {
-  const baseColors = [
-    "#3b82f6", // blue
-    "#f97316", // orange  
-    "#10b981", // green
-    "#f59e0b", // yellow
-    "#8b5cf6", // purple
-    "#ef4444", // red
-    "#06b6d4", // cyan
-    "#84cc16", // lime
-    "#f97316", // orange-alt
-    "#6366f1", // indigo
-    "#ec4899", // pink
-    "#14b8a6", // teal
-  ];
-  
-  if (modelCount <= baseColors.length) {
-    return baseColors.slice(0, modelCount);
-  }
-  
-  // Generate additional colors using HSL if we need more than base colors
-  const colors = [...baseColors];
-  const remaining = modelCount - baseColors.length;
-  
-  for (let i = 0; i < remaining; i++) {
-    const hue = (i * 137.5) % 360; // Golden angle for good distribution
-    const saturation = 70 + (i % 3) * 10; // Vary saturation slightly
-    const lightness = 45 + (i % 4) * 5;   // Vary lightness slightly
-    colors.push(`hsl(${hue}, ${saturation}%, ${lightness}%)`);
-  }
-  
-  return colors;
-};
-
-// Helper function to convert hex/hsl to light background color
-const getModelBadgeStyle = (color: string, index: number) => {
-  // For HSL colors, extract and create light version
-  if (color.startsWith('hsl')) {
-    const hslMatch = color.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
-    if (hslMatch) {
-      const [, h, s] = hslMatch;
-      return {
-        backgroundColor: `hsl(${h}, ${Math.min(parseInt(s), 30)}%, 90%)`,
-        color: `hsl(${h}, ${s}%, 25%)`
-      };
-    }
-  }
-  
-  // Predefined light backgrounds for base colors
-  const lightStyles = [
-    { backgroundColor: '#dbeafe', color: '#1e40af' }, // blue
-    { backgroundColor: '#fed7aa', color: '#c2410c' }, // orange
-    { backgroundColor: '#d1fae5', color: '#065f46' }, // green
-    { backgroundColor: '#fef3c7', color: '#92400e' }, // yellow
-    { backgroundColor: '#e9d5ff', color: '#6b21a8' }, // purple
-    { backgroundColor: '#fecaca', color: '#b91c1c' }, // red
-    { backgroundColor: '#cffafe', color: '#155e75' }, // cyan
-    { backgroundColor: '#ecfccb', color: '#365314' }, // lime
-    { backgroundColor: '#fed7aa', color: '#c2410c' }, // orange-alt
-    { backgroundColor: '#e0e7ff', color: '#3730a3' }, // indigo
-    { backgroundColor: '#fce7f3', color: '#be185d' }, // pink
-    { backgroundColor: '#ccfbf1', color: '#134e4a' }, // teal
-  ];
-  
-  return lightStyles[index] || { backgroundColor: '#f3f4f6', color: '#374151' };
-};
 
 const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({ 
   data, 
@@ -190,8 +117,43 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     }
   }, [viewMode, modelNames, selectedModels, topModels]);
 
-  // Generate colors for active models only
-  const modelColors = useMemo(() => generateModelColors(activeModels.length), [activeModels.length]);
+  // Generate colors for active models using shared color system
+  const modelColors = useMemo(() => {
+    return activeModels.map(model => getModelColor(model).chartColor);
+  }, [activeModels]);
+
+  // Get model badge style using shared color system
+  const getModelBadgeStyle = useCallback((modelName: string) => {
+    const colors = getModelColor(modelName);
+    
+    // Convert Tailwind classes to CSS values
+    const bgColorMap: Record<string, string> = {
+      'bg-blue-100': '#dbeafe', 'bg-green-100': '#dcfce7', 'bg-purple-100': '#f3e8ff',
+      'bg-orange-100': '#fed7aa', 'bg-pink-100': '#fce7f3', 'bg-indigo-100': '#e0e7ff',
+      'bg-teal-100': '#ccfbf1', 'bg-cyan-100': '#cffafe', 'bg-emerald-100': '#d1fae5',
+      'bg-amber-100': '#fef3c7', 'bg-lime-100': '#ecfccb', 'bg-rose-100': '#ffe4e6',
+      'bg-violet-100': '#ede9fe', 'bg-sky-100': '#e0f2fe', 'bg-red-100': '#fee2e2',
+      'bg-yellow-100': '#fef3c7', 'bg-fuchsia-100': '#fae8ff', 'bg-emerald-200': '#a7f3d0',
+      'bg-blue-200': '#bfdbfe', 'bg-purple-200': '#ddd6fe', 'bg-neutral-100': '#f5f5f5',
+      'bg-gray-100': '#f3f4f6'
+    };
+    
+    const textColorMap: Record<string, string> = {
+      'text-blue-800': '#1e40af', 'text-green-800': '#166534', 'text-purple-800': '#6b21a8',
+      'text-orange-800': '#9a3412', 'text-pink-800': '#be185d', 'text-indigo-800': '#3730a3',
+      'text-teal-800': '#115e59', 'text-cyan-800': '#155e75', 'text-emerald-800': '#065f46',
+      'text-amber-800': '#92400e', 'text-lime-800': '#365314', 'text-rose-800': '#9f1239',
+      'text-violet-800': '#5b21b6', 'text-sky-800': '#075985', 'text-red-800': '#991b1b',
+      'text-yellow-800': '#854d0e', 'text-fuchsia-800': '#86198f', 'text-emerald-900': '#064e3b',
+      'text-blue-900': '#1e3a8a', 'text-purple-900': '#581c87', 'text-neutral-800': '#404040',
+      'text-gray-800': '#1f2937'
+    };
+    
+    return {
+      backgroundColor: bgColorMap[colors.badgeColor] || '#f3f4f6',
+      color: textColorMap[colors.textColor] || '#1f2937'
+    };
+  }, []);
 
   // Calculate chart data based on current drill level (memoized for performance)
   const chartData = useMemo(() => {
@@ -719,11 +681,27 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
   }, [selectedModels.length, modelNames]);
 
   const embedQuery = async (query: string): Promise<number[]> => {
-    const response = await openai.embeddings.create({
-      model: "text-embedding-3-small",
-      input: query,
-    });
-    return response.data[0].embedding;
+    if (!hasValidApiKey()) {
+      throw new Error('OpenAI API key not available - please configure OPENAI_API_KEY environment variable');
+    }
+    
+    // Initialize OpenAI client if not already done
+    const initialized = await initializeOpenAIClient();
+    const openai = getOpenAIClient();
+    if (!initialized || !openai) {
+      throw new Error('OpenAI client not initialized - please check your configuration');
+    }
+    
+    try {
+      const response = await openai.embeddings.create({
+        model: "text-embedding-3-small",
+        input: query,
+      });
+      return response.data[0].embedding;
+    } catch (error) {
+      console.error('OpenAI embedding error:', error);
+      throw new Error(`Failed to embed query: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
   return (
@@ -1282,14 +1260,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                         <td className="px-6 py-4 text-sm">
                           <span 
                             className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
-                            style={(() => {
-                              const modelIndex = activeModels.indexOf(item.model);
-                              if (modelIndex >= 0) {
-                                return getModelBadgeStyle(modelColors[modelIndex], modelIndex);
-                              }
-                              const allModelIndex = modelNames.indexOf(item.model);
-                              return getModelBadgeStyle('#6b7280', allModelIndex);
-                            })()}
+                            style={getModelBadgeStyle(item.model)}
                           >
                             {item.model}
                           </span>
@@ -1348,14 +1319,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                     <td className="px-6 py-4 text-sm">
                       <span 
                         className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
-                        style={(() => {
-                          const modelIndex = activeModels.indexOf(item.model);
-                          if (modelIndex >= 0) {
-                            return getModelBadgeStyle(modelColors[modelIndex], modelIndex);
-                          }
-                          const allModelIndex = modelNames.indexOf(item.model);
-                          return getModelBadgeStyle('#6b7280', allModelIndex);
-                        })()}
+                        style={getModelBadgeStyle(item.model)}
                       >
                         {item.model}
                       </span>
