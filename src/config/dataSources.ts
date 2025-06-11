@@ -6,13 +6,11 @@
  */
 
 export const DATA_SOURCES = {
-  // Main Parquet files for model properties
-  // PROPERTIES_CSV: './all_one_sided_comparisons_clustered_4.csv',
+  // Main CSV files for model properties
   PROPERTIES_CSV: './all_one_sided_comparisons_clustered_4_sample.csv',
   
-  // Embedding data - Using Parquet for better performance and smaller size
-  EMBEDDINGS_PARQUET: './all_one_sided_comparisons_clustered_with_embeddings-clean.parquet',
-  EMBEDDINGS_CSV: './embedding_sample.csv', // Fallback for testing
+  // Embedding data
+  EMBEDDINGS_CSV: './embedding_sample.csv',
   
   // Alternative data sources (if you have multiple datasets)
   ALTERNATIVE_DIFFERENCES_CSV: './alternative_differences.csv',
@@ -50,7 +48,7 @@ export const DATA_CONFIG = {
 export const getCurrentDataSources = () => {
   return {
     properties: DATA_SOURCES.PROPERTIES_CSV,
-    embeddings: DATA_CONFIG.USE_PARQUET ? DATA_SOURCES.EMBEDDINGS_PARQUET : DATA_SOURCES.EMBEDDINGS_CSV,
+    embeddings: DATA_SOURCES.EMBEDDINGS_CSV,
   };
 };
 
