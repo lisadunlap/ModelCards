@@ -7,7 +7,8 @@
 
 export const DATA_SOURCES = {
   // Main Parquet files for model properties
-  PROPERTIES_CSV: './all_one_sided_comparisons_clustered_4.csv',
+  // PROPERTIES_CSV: './all_one_sided_comparisons_clustered_4.csv',
+  PROPERTIES_CSV: './all_one_sided_comparisons_clustered_4_sample.csv',
   
   // Embedding data - Using Parquet for better performance and smaller size
   EMBEDDINGS_PARQUET: './all_one_sided_comparisons_clustered_with_embeddings-clean.parquet',
