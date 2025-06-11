@@ -89,8 +89,14 @@ const ModelDifferenceAnalyzer = () => {
       
       // Test if properties CSV file is accessible
       setLoadingStatus('Checking properties CSV file...');
-      const response = await fetch(dataSources.properties);
+      const response = await fetch(dataSources.properties, {
+        headers: {
+          'Accept': 'text/csv,text/plain,*/*',
+          'Content-Type': 'text/csv'
+        }
+      });
       console.log('📁 Properties CSV response status:', response.status, response.statusText);
+      console.log('📁 Properties CSV response headers:', Object.fromEntries(response.headers.entries()));
       
       if (!response.ok) {
         throw new Error(`Properties CSV file not accessible: ${response.status} ${response.statusText}. Path: ${dataSources.properties}`);
@@ -109,6 +115,11 @@ const ModelDifferenceAnalyzer = () => {
       const csvSizeMB = csvContent.length / (1024 * 1024);
       console.log('📊 Properties CSV size:', csvContent.length, 'characters', `(${csvSizeMB.toFixed(2)} MB)`);
       
+      // Debug: Check first few characters and lines
+      console.log('🔍 First 200 characters of CSV:', csvContent.substring(0, 200));
+      console.log('🔍 First line (header):', csvContent.split('\n')[0]);
+      console.log('🔍 Total lines in CSV:', csvContent.split('\n').length);
+      
       setLoadingStatus('Parsing properties CSV...');
       console.log('🔍 Parsing properties CSV');
       
@@ -117,12 +128,27 @@ const ModelDifferenceAnalyzer = () => {
         header: true,
         dynamicTyping: DATA_CONFIG.ENABLE_DYNAMIC_TYPING,
         skipEmptyLines: DATA_CONFIG.SKIP_EMPTY_LINES,
+        // Add more explicit parsing options for better compatibility
+        delimiter: ",",
+        quoteChar: '"',
+        escapeChar: '"',
+        comments: false,
+        fastMode: false,
+        preview: 0
       }) as any;
       
       console.log('📈 Properties CSV parsed. Total rows found:', parsedData.data?.length || 0);
+      console.log('📈 Parser meta info:', parsedData.meta);
       
       if (parsedData.errors && parsedData.errors.length > 0) {
         console.warn('⚠️ Parsing errors in properties CSV:', parsedData.errors);
+        console.warn('⚠️ First few errors:', parsedData.errors.slice(0, 5));
+      }
+      
+      // Debug: Check first few parsed rows
+      if (parsedData.data && parsedData.data.length > 0) {
+        console.log('🔍 First parsed row keys:', Object.keys(parsedData.data[0] || {}));
+        console.log('🔍 First parsed row sample:', parsedData.data[0]);
       }
       
       setLoadingStatus('Processing properties data...');
