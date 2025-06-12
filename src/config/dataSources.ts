@@ -37,11 +37,11 @@ export const DATA_CONFIG = {
   ENABLE_DYNAMIC_TYPING: true,
   SKIP_EMPTY_LINES: true,
   
-  // Optimization settings - Use compressed full dataset
-  USE_OPTIMIZED_DATA: false, // Disable split optimization - use full dataset
-  USE_COMPRESSED_DATA: true, // Use compressed full dataset (28MB vs 249MB)
+  // Optimization settings - Use optimized uncompressed files
+  USE_OPTIMIZED_DATA: true, // Use optimized split (24MB table + 64MB detail as needed)
+  USE_COMPRESSED_DATA: false, // Use uncompressed optimized files to avoid browser issues
   USE_PARQUET: false, // Toggle between Parquet and CSV
-  LAZY_LOAD_DETAILS: false, // Load all data upfront
+  LAZY_LOAD_DETAILS: true, // Load detail data only when needed
   
   // Parquet-specific settings
   PARQUET_BATCH_SIZE: 1000, // Process Parquet in batches for memory efficiency

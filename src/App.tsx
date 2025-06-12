@@ -211,7 +211,7 @@ const ModelDifferenceAnalyzer = () => {
         setSelectedItem(item);
       }
     } else {
-      setSelectedItem(item);
+    setSelectedItem(item);
     }
     
     setSidebarOpen(true);

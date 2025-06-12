@@ -273,6 +273,9 @@ class DataLoaderService {
     
     // Handle compressed data
     if (sources.properties.endsWith('.gz')) {
+      // Clone the response so we can try multiple approaches
+      const responseClone = response.clone();
+      
       try {
         // Try automatic decompression first
         console.log('🗜️ Attempting automatic decompression...');
@@ -294,8 +297,8 @@ class DataLoaderService {
           total: 0
         });
         
-        // Manual decompression fallback
-        const buffer = await response.arrayBuffer();
+        // Use the cloned response for manual decompression
+        const buffer = await responseClone.arrayBuffer();
         console.log('📁 Compressed buffer size:', buffer.byteLength, 'bytes');
         csvContent = await this.decompressGzip(buffer);
         console.log('📁 Manually decompressed size:', csvContent.length, 'characters');
