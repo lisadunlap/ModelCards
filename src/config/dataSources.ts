@@ -7,14 +7,10 @@
 
 export const DATA_SOURCES = {
   // Main CSV files for model properties
-  PROPERTIES_CSV: './all_one_sided_comparisons_clustered_4_sample.csv',
+  PROPERTIES_CSV: './all_one_sided_comparisons_clustered_4_stripped.csv',
   
   // Embedding data
   EMBEDDINGS_CSV: './embedding_sample.csv',
-  
-  // Alternative data sources (if you have multiple datasets)
-  ALTERNATIVE_DIFFERENCES_CSV: './alternative_differences.csv',
-  ALTERNATIVE_PROPERTIES_CSV: './alternative_properties.csv',
   
   // Backup or test data sources
   SAMPLE_DIFFERENCES_CSV: './sample_differences.csv',
