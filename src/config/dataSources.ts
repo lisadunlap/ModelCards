@@ -37,11 +37,11 @@ export const DATA_CONFIG = {
   ENABLE_DYNAMIC_TYPING: true,
   SKIP_EMPTY_LINES: true,
   
-  // Optimization settings - Use optimized uncompressed files
-  USE_OPTIMIZED_DATA: true, // Use optimized split (24MB table + 64MB detail as needed)
-  USE_COMPRESSED_DATA: false, // Use uncompressed optimized files to avoid browser issues
+  // Optimization settings - Use compressed detail file (has everything)
+  USE_OPTIMIZED_DATA: true, // Use optimized data but load detail file
+  USE_COMPRESSED_DATA: true, // Use compressed detail file (25MB with all conversations)
   USE_PARQUET: false, // Toggle between Parquet and CSV
-  LAZY_LOAD_DETAILS: true, // Load detail data only when needed
+  LAZY_LOAD_DETAILS: false, // Load all detail data upfront
   
   // Parquet-specific settings
   PARQUET_BATCH_SIZE: 1000, // Process Parquet in batches for memory efficiency
@@ -75,13 +75,13 @@ export const getCurrentDataSources = () => {
   
   if (config.USE_OPTIMIZED_DATA) {
     if (config.USE_PARQUET) {
-      tableDataSource = DATA_SOURCES.TABLE_DATA_PARQUET;
+      tableDataSource = DATA_SOURCES.DETAIL_DATA_PARQUET; // Use detail file as primary
       detailDataSource = DATA_SOURCES.DETAIL_DATA_PARQUET;
     } else if (config.USE_COMPRESSED_DATA) {
-      tableDataSource = DATA_SOURCES.TABLE_DATA_COMPRESSED;
+      tableDataSource = DATA_SOURCES.DETAIL_DATA_COMPRESSED; // Use compressed detail file as primary
       detailDataSource = DATA_SOURCES.DETAIL_DATA_COMPRESSED;
     } else {
-      tableDataSource = DATA_SOURCES.TABLE_DATA_CSV;
+      tableDataSource = DATA_SOURCES.DETAIL_DATA_CSV; // Use detail file as primary
       detailDataSource = DATA_SOURCES.DETAIL_DATA_CSV;
     }
   } else {

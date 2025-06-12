@@ -199,21 +199,30 @@ const ModelDifferenceAnalyzer = () => {
 
   // Add handlers for viewing responses with lazy loading
   const handleViewProperty = async (item: PropertyData) => {
-    console.log('🔍 Loading detailed view for:', item.model, item.property_description?.substring(0, 50) + '...');
+    console.log('🔍 handleViewProperty called with item:', item);
+    console.log('🔍 Item row_id:', item.row_id);
+    console.log('🔍 Item has model_1_response:', !!item.model_1_response);
+    console.log('🔍 Item has model_2_response:', !!item.model_2_response);
+    console.log('🔍 Loading strategy:', dataLoader.getLoadingStrategy());
     
     // Try to load detailed data if available
     if (item.row_id !== undefined) {
       try {
+        console.log('🔍 Attempting to load detail data for row_id:', item.row_id);
         const detailedItem = await dataLoader.loadDetailData(item.row_id);
+        console.log('🔍 Detailed item result:', detailedItem);
+        console.log('🔍 Detailed item has model_1_response:', !!detailedItem?.model_1_response);
         setSelectedItem(detailedItem || item);
       } catch (error) {
         console.warn('Could not load detailed data:', error);
         setSelectedItem(item);
       }
     } else {
-    setSelectedItem(item);
+      console.log('🔍 No row_id found, using original item');
+      setSelectedItem(item);
     }
     
+    console.log('🔍 Opening sidebar');
     setSidebarOpen(true);
   };
 
