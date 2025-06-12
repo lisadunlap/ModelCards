@@ -37,11 +37,11 @@ export const DATA_CONFIG = {
   ENABLE_DYNAMIC_TYPING: true,
   SKIP_EMPTY_LINES: true,
   
-  // Optimization settings - Use compressed detail file (has everything)
-  USE_OPTIMIZED_DATA: true, // Use optimized data but load detail file
-  USE_COMPRESSED_DATA: true, // Use compressed detail file (25MB with all conversations)
+  // Optimization settings - Use original compressed file for Netlify compatibility
+  USE_OPTIMIZED_DATA: false, // Temporarily disable for Netlify
+  USE_COMPRESSED_DATA: true, // Use original compressed file (28MB)
   USE_PARQUET: false, // Toggle between Parquet and CSV
-  LAZY_LOAD_DETAILS: false, // Load all detail data upfront
+  LAZY_LOAD_DETAILS: false, // Load all data upfront
   
   // Parquet-specific settings
   PARQUET_BATCH_SIZE: 1000, // Process Parquet in batches for memory efficiency

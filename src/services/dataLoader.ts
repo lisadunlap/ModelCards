@@ -143,6 +143,8 @@ class DataLoaderService {
     });
     if (!tableResponse.ok) {
       console.warn(`Optimized table data not found (${sources.tableData}), falling back to full dataset`);
+      // Try the original compressed file as fallback
+      console.log('🔄 Attempting fallback to original compressed file...');
       return await this.loadFullDataset(onProgress);
     }
     
@@ -263,7 +265,7 @@ class DataLoaderService {
     console.log('📁 Response size:', response.headers.get('content-length'), 'bytes');
     
     onProgress?.({
-      status: 'Reading dataset...',
+      status: 'Reading dataset (this may take a while)...',
       progress: 30,
       loaded: 0,
       total: 0
@@ -325,10 +327,19 @@ class DataLoaderService {
     
     console.log('📈 Full dataset parsed. Total rows:', parsedData.data?.length || 0);
     console.log('📈 Sample columns:', Object.keys(parsedData.data?.[0] || {}));
+    console.log('📈 First row sample:', parsedData.data?.[0]);
+    console.log('📈 Parse errors:', parsedData.errors?.length || 0);
+    if (parsedData.errors && parsedData.errors.length > 0) {
+      console.log('📈 Parse errors sample:', parsedData.errors.slice(0, 3));
+    }
     
-    const processedData = (parsedData.data as any[])
-      .filter(row => row && row.property_description)
-      .map(row => this.normalizePropertyData(row));
+    // Debug filtering
+    const validRows = (parsedData.data as any[]).filter(row => row && row.property_description);
+    console.log('📈 Rows after filtering:', validRows.length);
+    console.log('📈 Sample valid row:', validRows[0]);
+    
+    const processedData = validRows.map(row => this.normalizePropertyData(row));
+    console.log('📈 Rows after normalization:', processedData.length);
     
     onProgress?.({
       status: 'Complete!',

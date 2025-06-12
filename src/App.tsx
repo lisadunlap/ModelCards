@@ -367,8 +367,8 @@ const ModelDifferenceAnalyzer = () => {
             ></div>
             
             {/* Panel */}
-            <section className="absolute inset-y-0 right-0 pl-10 max-w-full flex">
-              <div className="relative w-screen max-w-4xl">
+            <section className="absolute inset-y-0 right-0 pl-8 max-w-full flex">
+              <div className="relative w-screen max-w-6xl">
                 <div className="h-full flex flex-col bg-white shadow-xl overflow-y-scroll">
                   {/* Header */}
                   <div className="px-4 py-6 bg-gray-50 sm:px-6">
