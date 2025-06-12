@@ -6,36 +6,19 @@ import SemanticSearch from './SemanticSearch';
 import ContentRenderer from './components/ContentRenderer';
 import { getCurrentDataSources, validateDataSources, DATA_CONFIG } from './config/dataSources';
 import { initializeModelColors, getModelColor } from './config/modelColors';
-
-interface PropertyData {
-  prompt: string;
-  model_1_response: string;
-  model_2_response: string;
-  model_1_name: string;
-  model_2_name: string;
-  differences: string;
-  parsed_differences: string;
-  parse_error?: string;
-  model: string;
-  property_description: string;
-  category: string;
-  evidence: string;
-  type: string;
-  reason: string;
-  impact: string;
-  unexpected_behavior?: string;
-  property_description_coarse_cluster_label: string;
-  property_description_fine_cluster_label: string;
-  property_description_coarse_cluster_id: number;
-  property_description_fine_cluster_id: number;
-}
+import { dataLoader, PropertyData, LoadingProgress } from './services/dataLoader';
 
 const ModelDifferenceAnalyzer = () => {
   const [propertyData, setPropertyData] = useState<PropertyData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedView, setSelectedView] = useState<string>('overview');
-  const [loadingStatus, setLoadingStatus] = useState<string>('Starting...');
+  const [loadingProgress, setLoadingProgress] = useState<LoadingProgress>({
+    status: 'Starting...',
+    progress: 0,
+    loaded: 0,
+    total: 0
+  });
   
   // Add state for side panel
   const [selectedItem, setSelectedItem] = useState<PropertyData | null>(null);
@@ -79,105 +62,19 @@ const ModelDifferenceAnalyzer = () => {
 
   const loadDataSafely = async () => {
     try {
-      setLoadingStatus('Validating data source configuration...');
-      console.log('🔄 Starting data loading process');
+      console.log('🔄 Starting optimized data loading process');
       
       // Validate data sources configuration
       validateDataSources();
       const dataSources = getCurrentDataSources();
       console.log('📋 Using data sources:', dataSources);
       
-      // Test if properties CSV file is accessible
-      setLoadingStatus('Checking properties CSV file...');
-      const response = await fetch(dataSources.properties, {
-        headers: {
-          'Accept': 'text/csv,text/plain,*/*',
-          'Content-Type': 'text/csv'
-        }
+      // Load data using the optimized data loader
+      const processedProperties = await dataLoader.loadTableData((progress) => {
+        setLoadingProgress(progress);
       });
-      console.log('📁 Properties CSV response status:', response.status, response.statusText);
-      console.log('📁 Properties CSV response headers:', Object.fromEntries(response.headers.entries()));
       
-      if (!response.ok) {
-        throw new Error(`Properties CSV file not accessible: ${response.status} ${response.statusText}. Path: ${dataSources.properties}`);
-      }
-      
-      // Load Papa Parse library
-      setLoadingStatus('Loading CSV parser...');
-      console.log('📚 Loading Papa Parse library');
-      const Papa = (await import('papaparse')).default;
-      console.log('✅ Papa Parse loaded successfully');
-      
-      // Load and parse properties CSV
-      setLoadingStatus('Reading properties CSV content...');
-      console.log('📖 Reading properties CSV content');
-      const csvContent = await response.text();
-      const csvSizeMB = csvContent.length / (1024 * 1024);
-      console.log('📊 Properties CSV size:', csvContent.length, 'characters', `(${csvSizeMB.toFixed(2)} MB)`);
-      
-      // Debug: Check first few characters and lines
-      console.log('🔍 First 200 characters of CSV:', csvContent.substring(0, 200));
-      console.log('🔍 First line (header):', csvContent.split('\n')[0]);
-      console.log('🔍 Total lines in CSV:', csvContent.split('\n').length);
-      
-      setLoadingStatus('Parsing properties CSV...');
-      console.log('🔍 Parsing properties CSV');
-      
-      // Parse the full dataset
-      const parsedData = Papa.parse(csvContent, {
-        header: true,
-        dynamicTyping: DATA_CONFIG.ENABLE_DYNAMIC_TYPING,
-        skipEmptyLines: DATA_CONFIG.SKIP_EMPTY_LINES,
-        // Add more explicit parsing options for better compatibility
-        delimiter: ",",
-        quoteChar: '"',
-        escapeChar: '"',
-        comments: false,
-        fastMode: false,
-        preview: 0
-      }) as any;
-      
-      console.log('📈 Properties CSV parsed. Total rows found:', parsedData.data?.length || 0);
-      console.log('📈 Parser meta info:', parsedData.meta);
-      
-      if (parsedData.errors && parsedData.errors.length > 0) {
-        console.warn('⚠️ Parsing errors in properties CSV:', parsedData.errors);
-        console.warn('⚠️ First few errors:', parsedData.errors.slice(0, 5));
-      }
-      
-      // Debug: Check first few parsed rows
-      if (parsedData.data && parsedData.data.length > 0) {
-        console.log('🔍 First parsed row keys:', Object.keys(parsedData.data[0] || {}));
-        console.log('🔍 First parsed row sample:', parsedData.data[0]);
-      }
-      
-      setLoadingStatus('Processing properties data...');
-      const processedProperties = (parsedData.data || [])
-        .filter((row: any) => row && row.property_description)
-        .map((row: any) => ({
-          prompt: row.prompt || '',
-          model_1_response: row.model_1_response || '',
-          model_2_response: row.model_2_response || '',
-          model_1_name: row.model_1_name || '',
-          model_2_name: row.model_2_name || '',
-          differences: row.differences || '',
-          parsed_differences: row.parsed_differences || '',
-          parse_error: row.parse_error,
-          model: row.model || 'Unknown',
-          property_description: row.property_description || '',
-          category: row.category || 'Unknown',
-          evidence: row.evidence || '',
-          type: row.type || '',
-          reason: row.reason || '',
-          impact: row.impact || 'Low',
-          unexpected_behavior: row.unexpected_behavior,
-          property_description_coarse_cluster_label: row.property_description_coarse_cluster_label || 'Unknown',
-          property_description_fine_cluster_label: row.property_description_fine_cluster_label || 'Unknown',
-          property_description_coarse_cluster_id: row.property_description_coarse_cluster_id || 0,
-          property_description_fine_cluster_id: row.property_description_fine_cluster_id || 0
-        })) as PropertyData[];
-      
-      console.log('✅ Properties CSV processed successfully. Final count:', processedProperties.length);
+      console.log('✅ Data loaded successfully. Final count:', processedProperties.length);
       
       // Debug: Show all unique models found
       const allModels = Array.from(new Set([
@@ -187,12 +84,11 @@ const ModelDifferenceAnalyzer = () => {
       console.log('🎯 All unique models found:', allModels);
       console.log('📊 Total unique models:', allModels.length);
       
-      // Update loading status with sampling information
-      let statusMessage = 'Data loading completed successfully!';
-      setLoadingStatus(statusMessage);
-      
-      console.log('🎉 All data loaded successfully!');
-      console.log('📊 Final count - Properties:', processedProperties.length);
+      // Get data index for additional info
+      const dataIndex = dataLoader.getDataIndex();
+      if (dataIndex) {
+        console.log('📊 Data index:', dataIndex);
+      }
       
       setPropertyData(processedProperties);
       
@@ -206,6 +102,7 @@ const ModelDifferenceAnalyzer = () => {
       
       setLoading(false);
       setError(null);
+      
     } catch (error) {
       console.error('❌ Error loading data:', error);
       setError(error instanceof Error ? error.message : 'An unexpected error occurred');
@@ -244,13 +141,23 @@ const ModelDifferenceAnalyzer = () => {
         <div className="text-center max-w-2xl">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading Data</h2>
-          <p className="text-gray-600 mb-4">{loadingStatus}</p>
+          <p className="text-gray-600 mb-4">{loadingProgress.status}</p>
+          
+          {/* Progress Bar */}
+          <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${loadingProgress.progress}%` }}
+            ></div>
+          </div>
+          
           <div className="bg-blue-50 p-4 rounded-lg">
-            <p className="text-blue-800 font-medium mb-2">📊 What's Loading:</p>
+            <p className="text-blue-800 font-medium mb-2">📊 Loading Progress:</p>
             <div className="text-blue-700 text-sm space-y-1">
-              <p>• Data loaded so far: {propertyData.length} properties</p>
-              <p>• Processing and validating CSV files</p>
-              <p>• Preparing interactive visualizations</p>
+              <p>• Progress: {loadingProgress.progress.toFixed(1)}%</p>
+              <p>• Data loaded: {loadingProgress.loaded.toLocaleString()} / {loadingProgress.total.toLocaleString()}</p>
+              <p>• Status: {loadingProgress.status}</p>
+              <p>• Using optimized loading with caching</p>
             </div>
           </div>
         </div>
@@ -290,10 +197,23 @@ const ModelDifferenceAnalyzer = () => {
   // Get data sources for display
   const dataSources = getCurrentDataSources();
 
-  // Add handlers for viewing responses
-  const handleViewProperty = (item: PropertyData) => {
-    console.log('View property:', item);
-    setSelectedItem(item);
+  // Add handlers for viewing responses with lazy loading
+  const handleViewProperty = async (item: PropertyData) => {
+    console.log('🔍 Loading detailed view for:', item.model, item.property_description?.substring(0, 50) + '...');
+    
+    // Try to load detailed data if available
+    if (item.row_id !== undefined) {
+      try {
+        const detailedItem = await dataLoader.loadDetailData(item.row_id);
+        setSelectedItem(detailedItem || item);
+      } catch (error) {
+        console.warn('Could not load detailed data:', error);
+        setSelectedItem(item);
+      }
+    } else {
+      setSelectedItem(item);
+    }
+    
     setSidebarOpen(true);
   };
 
@@ -351,6 +271,7 @@ const ModelDifferenceAnalyzer = () => {
           {selectedView === 'overview' && (
             <div>
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Data Overview</h2>
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-green-50 p-4 rounded-lg">
                   <div className="flex items-center">

@@ -134,7 +134,10 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
         const response = await fetch(dataSources.embeddings);
         
         if (!response.ok) {
-          throw new Error(`Failed to fetch embedding CSV file: ${response.status} ${response.statusText}`);
+          console.warn('Failed to fetch embedding CSV, falling back to demo data');
+          setEmbeddingData(NORMALIZED_DEMO_PROPERTIES);
+          setDataLoading(false);
+          return;
         }
         
         const csvContent = await response.text();
@@ -174,17 +177,24 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
           })
           .filter((row: PropertyDataWithEmbedding) => row.embedding && row.embedding.length > 0);
 
-        // Normalize embeddings
-        const normalizedData = processedData.map(item => ({
-          ...item,
-          embedding: normalizeEmbedding(item.embedding!)
-        }));
+        // If no valid embeddings found, use demo data
+        if (processedData.length === 0) {
+          console.warn('No valid embeddings found in CSV, falling back to demo data');
+          setEmbeddingData(NORMALIZED_DEMO_PROPERTIES);
+        } else {
+          // Normalize embeddings
+          const normalizedData = processedData.map(item => ({
+            ...item,
+            embedding: normalizeEmbedding(item.embedding!)
+          }));
 
-        setEmbeddingData(normalizedData);
+          setEmbeddingData(normalizedData);
+        }
         setDataLoading(false);
       } catch (error) {
         console.error('Error loading embedding data:', error);
-        setDataError(error instanceof Error ? error.message : 'Failed to load embedding data');
+        console.warn('Falling back to demo data');
+        setEmbeddingData(NORMALIZED_DEMO_PROPERTIES);
         setDataLoading(false);
       }
     };

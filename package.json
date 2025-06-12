@@ -7,9 +7,14 @@
     "build": "vite build",
     "preview": "vite preview",
     "precompute-examples": "node scripts/precompute-examples.js",
-    "generate-demo-embeddings": "node scripts/generate-demo-embeddings.js"
+    "generate-demo-embeddings": "node scripts/generate-demo-embeddings.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "netlify dev:exec drizzle-kit migrate",
+    "db:studio": "netlify dev:exec drizzle-kit studio"
   },
   "dependencies": {
+    "@netlify/neon": "^0.1.0",
+    "drizzle-orm": "^0.44.2",
     "lucide-react": "^0.263.1",
     "openai": "^5.1.1",
     "papaparse": "^5.4.1",
@@ -28,6 +33,7 @@
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
     "@vitejs/plugin-react": "^4.0.3",
+    "drizzle-kit": "^0.31.1",
     "typescript": "^5.0.2",
     "vite": "^4.4.5"
   }
