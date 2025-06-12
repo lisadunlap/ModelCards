@@ -6,6 +6,8 @@ const ALLOWED_DOMAINS = [
   'localhost',
   '127.0.0.1',
   'netlify.app', // Netlify domains
+  'llm-vibes.com',
+  'www.llm-vibes.com'
   // Add your custom domain here if you have one
 ];
 
