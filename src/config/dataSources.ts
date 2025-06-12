@@ -11,6 +11,7 @@ export const DATA_SOURCES = {
   
   // Embedding data
   EMBEDDINGS_CSV: './embedding_sample.csv',
+  EMBEDDINGS_PARQUET: './all_one_sided_comparisons_clustered_with_embeddings-clean.parquet',
   
   // Backup or test data sources
   SAMPLE_DIFFERENCES_CSV: './sample_differences.csv',
@@ -44,7 +45,7 @@ export const DATA_CONFIG = {
 export const getCurrentDataSources = () => {
   return {
     properties: DATA_SOURCES.PROPERTIES_CSV,
-    embeddings: DATA_SOURCES.EMBEDDINGS_CSV,
+    embeddings: DATA_CONFIG.USE_PARQUET ? DATA_SOURCES.EMBEDDINGS_PARQUET : DATA_SOURCES.EMBEDDINGS_CSV,
   };
 };
 
