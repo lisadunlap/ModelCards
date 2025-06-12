@@ -25,6 +25,7 @@ interface PropertyData {
   property_description_fine_cluster_label: string;
   property_description_coarse_cluster_id: number;
   property_description_fine_cluster_id: number;
+  row_id?: number;
 }
 
 interface InteractivePropertyChartProps {
@@ -423,6 +424,18 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       );
     }
     
+    // Debug: Log some info about the filtered data
+    console.log('🔍 Filtered table data:', {
+      totalItems: filteredData.length,
+      sampleItems: filteredData.slice(0, 5).map(item => ({
+        row_id: item.row_id,
+        model: item.model,
+        property_desc: item.property_description?.substring(0, 30) + '...'
+      })),
+      uniqueRowIds: Array.from(new Set(filteredData.map(item => item.row_id))).slice(0, 10),
+      uniqueModels: Array.from(new Set(filteredData.map(item => item.model))).slice(0, 5)
+    });
+    
     return filteredData;
   }, [data, drillState, tableSearch, viewMode, activeModels, showUnexpectedOnly]);
 
@@ -446,13 +459,29 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       groups[prompt].push(item);
     });
     
-    return Object.entries(groups)
+    const result = Object.entries(groups)
       .map(([prompt, items]) => ({
         prompt,
         items,
         count: items.length
       }))
       .sort((a, b) => b.count - a.count); // Sort by count descending
+    
+    // Debug: Log some info about the grouped data
+    console.log('🔍 Grouped data created:', {
+      totalGroups: result.length,
+      sampleGroup: result[0] ? {
+        prompt: result[0].prompt.substring(0, 50) + '...',
+        itemCount: result[0].items.length,
+        sampleItems: result[0].items.slice(0, 3).map(item => ({
+          row_id: item.row_id,
+          model: item.model,
+          property_desc: item.property_description?.substring(0, 30) + '...'
+        }))
+      } : null
+    });
+    
+    return result;
   }, [filteredTableData, groupByPrompt]);
 
   // Handle prompt group expansion
@@ -1297,7 +1326,17 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                         <td className="px-6 py-4 text-sm">
                           {onViewResponse && (
                             <button
-                              onClick={() => onViewResponse(item)}
+                              onClick={() => {
+                                console.log('🔍 Grouped View - Clicking View button for item:', {
+                                  model: item.model,
+                                  prompt: item.prompt?.substring(0, 50) + '...',
+                                  property_description: item.property_description?.substring(0, 50) + '...',
+                                  row_id: item.row_id,
+                                  model_1_name: item.model_1_name,
+                                  model_2_name: item.model_2_name
+                                });
+                                onViewResponse(item);
+                              }}
                               className="flex items-center text-purple-600 hover:text-purple-800 font-medium transition-colors"
                             >
                               <Eye className="h-4 w-4 mr-1" />
@@ -1356,7 +1395,17 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                     <td className="px-6 py-4 text-sm">
                       {onViewResponse && (
                         <button
-                          onClick={() => onViewResponse(item)}
+                          onClick={() => {
+                            console.log('🔍 Grouped View - Clicking View button for item:', {
+                              model: item.model,
+                              prompt: item.prompt?.substring(0, 50) + '...',
+                              property_description: item.property_description?.substring(0, 50) + '...',
+                              row_id: item.row_id,
+                              model_1_name: item.model_1_name,
+                              model_2_name: item.model_2_name
+                            });
+                            onViewResponse(item);
+                          }}
                           className="flex items-center text-purple-600 hover:text-purple-800 font-medium transition-colors"
                         >
                           <Eye className="h-4 w-4 mr-1" />

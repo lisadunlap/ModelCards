@@ -65,10 +65,8 @@ class DataLoaderService {
   private cacheTimestamp = 'model_analyzer_timestamp';
   
   constructor() {
-    // Clear cache if we're switching to optimized data to avoid conflicts
-    if (this.loadingStrategy.useOptimizedData) {
-      this.clearCache();
-    }
+    // Clear cache to ensure fresh data loading with proper row_id generation
+    this.clearCache();
   }
   
   async loadTableData(onProgress?: (progress: LoadingProgress) => void): Promise<PropertyData[]> {
@@ -212,7 +210,11 @@ class DataLoaderService {
     // Process and filter data
     const processedData = (parsedData.data as any[])
       .filter(row => row && row.property_description)
-      .map(row => this.normalizePropertyData(row));
+      .map((row, index) => {
+        // Always assign a unique row_id based on the index
+        row.row_id = index + 1;
+        return this.normalizePropertyData(row);
+      });
     
     onProgress?.({
       status: 'Caching data...',
@@ -338,7 +340,11 @@ class DataLoaderService {
     console.log('📈 Rows after filtering:', validRows.length);
     console.log('📈 Sample valid row:', validRows[0]);
     
-    const processedData = validRows.map(row => this.normalizePropertyData(row));
+    const processedData = validRows.map((row, index) => {
+      // Always assign a unique row_id based on the index
+      row.row_id = index + 1;
+      return this.normalizePropertyData(row);
+    });
     console.log('📈 Rows after normalization:', processedData.length);
     
     onProgress?.({
@@ -354,6 +360,8 @@ class DataLoaderService {
   
   async loadDetailData(rowId: number): Promise<PropertyData | null> {
     console.log('🔍 loadDetailData called for rowId:', rowId);
+    console.log('🔍 tableData length:', this.tableData.length);
+    console.log('🔍 Sample tableData row_ids:', this.tableData.slice(0, 5).map(item => item.row_id));
     
     // Check cache first
     if (this.detailDataCache.has(rowId)) {
@@ -366,8 +374,15 @@ class DataLoaderService {
       console.log('📋 Not using lazy loading, looking in table data');
       const item = this.tableData.find(item => item.row_id === rowId);
       if (item) {
+        console.log('✅ Found item in tableData:', {
+          row_id: item.row_id,
+          model: item.model,
+          property_desc: item.property_description?.substring(0, 50) + '...'
+        });
         this.detailDataCache.set(rowId, item);
         return item;
+      } else {
+        console.warn('❌ No item found in tableData for rowId:', rowId);
       }
     }
     
@@ -424,7 +439,11 @@ class DataLoaderService {
       // Process and store the full detail dataset
       this.fullDetailData = (parsedData.data as any[])
         .filter(row => row && row.property_description)
-        .map(row => this.normalizePropertyData(row));
+        .map((row, index) => {
+          // Always assign a unique row_id based on the index
+          row.row_id = index + 1;
+          return this.normalizePropertyData(row);
+        });
       
       console.log('✅ Loaded full detail dataset:', this.fullDetailData.length, 'rows');
       
@@ -434,7 +453,7 @@ class DataLoaderService {
   }
   
   private normalizePropertyData(row: any): PropertyData {
-    return {
+    const normalized = {
       prompt: row.prompt || '',
       model_1_response: row.model_1_response || '',
       model_2_response: row.model_2_response || '',
@@ -457,6 +476,21 @@ class DataLoaderService {
       property_description_fine_cluster_id: row.property_description_fine_cluster_id || 0,
       row_id: row.row_id || 0,
     };
+    
+    // Debug: Log some sample data to understand the structure
+    if (Math.random() < 0.001) { // Log ~0.1% of rows
+      console.log('🔍 Sample normalized data:', {
+        row_id: normalized.row_id,
+        model: normalized.model,
+        model_1_name: normalized.model_1_name,
+        model_2_name: normalized.model_2_name,
+        has_model_1_response: !!normalized.model_1_response,
+        has_model_2_response: !!normalized.model_2_response,
+        property_desc_length: normalized.property_description.length
+      });
+    }
+    
+    return normalized;
   }
   
   private async decompressGzip(buffer: ArrayBuffer): Promise<string> {

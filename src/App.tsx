@@ -201,6 +201,10 @@ const ModelDifferenceAnalyzer = () => {
   const handleViewProperty = async (item: PropertyData) => {
     console.log('🔍 handleViewProperty called with item:', item);
     console.log('🔍 Item row_id:', item.row_id);
+    console.log('🔍 Item model (from table):', item.model);
+    console.log('🔍 Item model_1_name:', item.model_1_name);
+    console.log('🔍 Item model_2_name:', item.model_2_name);
+    console.log('🔍 Item property_description (first 100 chars):', item.property_description?.substring(0, 100));
     console.log('🔍 Item has model_1_response:', !!item.model_1_response);
     console.log('🔍 Item has model_2_response:', !!item.model_2_response);
     console.log('🔍 Loading strategy:', dataLoader.getLoadingStrategy());
@@ -211,7 +215,10 @@ const ModelDifferenceAnalyzer = () => {
         console.log('🔍 Attempting to load detail data for row_id:', item.row_id);
         const detailedItem = await dataLoader.loadDetailData(item.row_id);
         console.log('🔍 Detailed item result:', detailedItem);
+        console.log('🔍 Detailed item model (after loading):', detailedItem?.model);
+        console.log('🔍 Detailed item property_description (first 100 chars):', detailedItem?.property_description?.substring(0, 100));
         console.log('🔍 Detailed item has model_1_response:', !!detailedItem?.model_1_response);
+        console.log('🔍 Are items the same object?', detailedItem === item);
         setSelectedItem(detailedItem || item);
       } catch (error) {
         console.warn('Could not load detailed data:', error);
@@ -219,7 +226,7 @@ const ModelDifferenceAnalyzer = () => {
       }
     } else {
       console.log('🔍 No row_id found, using original item');
-      setSelectedItem(item);
+    setSelectedItem(item);
     }
     
     console.log('🔍 Opening sidebar');
