@@ -213,23 +213,20 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data }) => {
               ) : (
                 <div className="space-y-3">
                   {summary.topClusters.map((cluster, clusterIndex) => (
-                    <div key={cluster.clusterName} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <h4 className="text-sm font-medium text-gray-900 truncate" title={cluster.clusterName}>
+                    <div key={cluster.clusterName} className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between">
+                          <h4 className="text-sm font-medium text-gray-900 leading-relaxed flex-1 pr-2">
                             {cluster.clusterName}
                           </h4>
-                          <div className="flex items-center space-x-2 ml-2">
-                            <span className="text-sm font-semibold text-gray-900">
-                              {cluster.percentage.toFixed(1)}%
-                            </span>
+                          <div className="flex-shrink-0">
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                               #{clusterIndex + 1}
                             </span>
                           </div>
                         </div>
                         
-                        <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                        <div className="flex items-center justify-between text-xs text-gray-600">
                           <span>{cluster.modelItems} / {cluster.totalItems} items</span>
                           <span>Proportion: {cluster.proportion.toFixed(3)}</span>
                         </div>
