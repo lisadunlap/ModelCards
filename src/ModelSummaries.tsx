@@ -418,9 +418,6 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data }) => {
                       
                       <div className="flex items-center justify-between text-xs text-gray-500">
                         <span>{cluster.modelItems}/{cluster.totalItems} items ({(cluster.proportion * 100).toFixed(1)}%)</span>
-                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-white text-gray-600 border border-gray-200">
-                          #{clusterIndex + 1}
-                        </span>
                       </div>
                     </div>
                   ))}
