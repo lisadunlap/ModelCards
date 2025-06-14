@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Users, Database, Brain, X, Eye, ExternalLink } from 'lucide-react';
+import { BarChart3, Users, Database, Brain, X, Eye, ExternalLink, TrendingUp } from 'lucide-react';
 import InteractiveHierarchicalChart from './InteractiveHierarchicalChart';
 import InteractivePropertyChart from './InteractivePropertyChart';
 import SemanticSearch from './SemanticSearch';
+import ModelSummaries from './ModelSummaries';
 import ContentRenderer from './components/ContentRenderer';
 import { getCurrentDataSources, validateDataSources, DATA_CONFIG } from './config/dataSources';
 import { initializeModelColors, getModelColor } from './config/modelColors';
@@ -191,6 +192,7 @@ const ModelDifferenceAnalyzer = () => {
   const navigationItems = [
     { id: 'overview', label: 'Overview', icon: Database },
     { id: 'properties', label: 'Property Analysis', icon: BarChart3 },
+    { id: 'summaries', label: 'Summaries', icon: TrendingUp },
     { id: 'search', label: 'Semantic Search', icon: Brain }
   ];
 
@@ -348,6 +350,12 @@ const ModelDifferenceAnalyzer = () => {
             <InteractivePropertyChart 
               data={propertyData} 
               onViewResponse={handleViewProperty} 
+            />
+          )}
+
+          {selectedView === 'summaries' && propertyData.length > 0 && (
+            <ModelSummaries 
+              data={propertyData} 
             />
           )}
 
