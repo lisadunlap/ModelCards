@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Users, Database, Brain, X, Eye, ExternalLink, TrendingUp } from 'lucide-react';
+import { BarChart3, Bot, Database, Brain, X, Eye, ExternalLink, TrendingUp, PenTool } from 'lucide-react';
 import InteractiveHierarchicalChart from './InteractiveHierarchicalChart';
 import InteractivePropertyChart from './InteractivePropertyChart';
 import SemanticSearch from './SemanticSearch';
@@ -290,7 +290,7 @@ const ModelDifferenceAnalyzer = () => {
             <div>
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Data Overview</h2>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="bg-green-50 p-4 rounded-lg">
                   <div className="flex items-center">
                     <BarChart3 className="h-8 w-8 text-green-600 mr-3" />
@@ -303,7 +303,7 @@ const ModelDifferenceAnalyzer = () => {
                 
                 <div className="bg-purple-50 p-4 rounded-lg">
                   <div className="flex items-center">
-                    <Users className="h-8 w-8 text-purple-600 mr-3" />
+                    <Bot className="h-8 w-8 text-purple-600 mr-3" />
                     <div>
                       <p className="text-lg font-semibold text-gray-900">
                         {Array.from(new Set([
@@ -311,6 +311,20 @@ const ModelDifferenceAnalyzer = () => {
                         ])).length}
                       </p>
                       <p className="text-sm text-gray-600">Unique Models</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="flex items-center">
+                    <PenTool className="h-8 w-8 text-blue-600 mr-3" />
+                    <div>
+                      <p className="text-lg font-semibold text-gray-900">
+                        {Array.from(new Set([
+                          ...propertyData.map(p => p.prompt).filter(prompt => prompt && prompt.trim() !== '')
+                        ])).length}
+                      </p>
+                      <p className="text-sm text-gray-600">Unique Prompts</p>
                     </div>
                   </div>
                 </div>
