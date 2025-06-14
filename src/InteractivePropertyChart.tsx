@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { ChevronRight, ArrowLeft, Eye, Home, ChevronLeft, ChevronDown, Filter, BarChart3, Grid, Users, TrendingUp } from 'lucide-react';
 import { getOpenAIApiKey, hasValidApiKey, initializeOpenAIClient, getOpenAIClient } from './config/apiConfig';
@@ -42,7 +42,7 @@ interface DrillState {
   property?: string;
 }
 
-type ViewMode = 'all-models' | 'selected-models' | 'heatmap' | 'top-models';
+type ViewMode = 'selected-models' | 'heatmap';
 
 const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({ 
   data, 
@@ -52,9 +52,8 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const [tableSearch, setTableSearch] = useState('');
-  const [viewMode, setViewMode] = useState<ViewMode>('top-models');
+  const [viewMode, setViewMode] = useState<ViewMode>('selected-models');
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
-  const [topModelCount, setTopModelCount] = useState(5);
   const [showDiscrepancyOnly, setShowDiscrepancyOnly] = useState(false);
   const [discrepancyThreshold, setDiscrepancyThreshold] = useState(2);
   const [showUnexpectedOnly, setShowUnexpectedOnly] = useState(false);
@@ -93,33 +92,22 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     return uniqueModels.sort();
   }, [data]);
 
-  // Get top models by frequency
-  const topModels = useMemo(() => {
-    const modelCounts = modelNames.map(model => ({
-      model,
-      count: data.filter(item => item.model === model).length
-    }));
-    return modelCounts
-      .sort((a, b) => b.count - a.count)
-      .slice(0, topModelCount)
-      .map(item => item.model);
-  }, [data, modelNames, topModelCount]);
+  // Initialize selectedModels to all models by default (except "Unknown")
+  useEffect(() => {
+    if (modelNames.length > 0 && selectedModels.length === 0) {
+      const modelsToSelect = modelNames.filter(model => model !== 'Unknown');
+      setSelectedModels(modelsToSelect);
+    }
+  }, [modelNames, selectedModels.length]);
 
   // Get active models based on view mode
   const activeModels = useMemo(() => {
-    switch (viewMode) {
-      case 'all-models':
-        return modelNames;
-      case 'selected-models':
-        return selectedModels.length > 0 ? selectedModels : modelNames;
-      case 'top-models':
-        return topModels;
-      case 'heatmap':
-        return modelNames;
-      default:
-        return topModels;
+    if (viewMode === 'heatmap') {
+      return modelNames;
     }
-  }, [viewMode, modelNames, selectedModels, topModels]);
+    // For selected-models view mode
+    return selectedModels.length > 0 ? selectedModels : modelNames;
+  }, [viewMode, modelNames, selectedModels]);
 
   // Generate colors for active models using shared color system
   const modelColors = useMemo(() => {
@@ -187,7 +175,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
 
     // Filter by active models (except in heatmap mode where we want to see all)
     // Skip this filter if battle model filtering is enabled - let battle filtering handle model selection
-    if (viewMode !== 'heatmap' && viewMode !== 'all-models' && !(filterBattleModels && viewMode === 'selected-models' && selectedModels.length > 0)) {
+    if (viewMode !== 'heatmap' && !(filterBattleModels && viewMode === 'selected-models' && selectedModels.length > 0)) {
       filteredData = filteredData.filter(item => activeModels.includes(item.model));
     }
 
@@ -306,9 +294,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
         const ratio = maxCount / minCount;
         
         // Use the threshold from the slider
-        const threshold = viewMode === 'all-models' ? 
-          Math.max(discrepancyThreshold, 2) : // Minimum 2x for all-models to avoid too strict filtering
-          discrepancyThreshold;
+        const threshold = discrepancyThreshold;
         
         return ratio >= threshold;
       });
@@ -430,7 +416,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     }
     
     // Filter by active models (except in heatmap mode where we want to see all)
-    if (viewMode !== 'heatmap' && viewMode !== 'all-models' && !(filterBattleModels && viewMode === 'selected-models' && selectedModels.length > 0)) {
+    if (viewMode !== 'heatmap' && !(filterBattleModels && viewMode === 'selected-models' && selectedModels.length > 0)) {
       filteredData = filteredData.filter(item => activeModels.includes(item.model));
     }
     
@@ -807,11 +793,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
             {modelNames.length} total models • {activeModels.length} showing
             {showDiscrepancyOnly ? (
               <span className="ml-2 px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-                Showing {chartData.length} categories with discrepancies ≥ {
-                  viewMode === 'all-models' ? 
-                    Math.max(discrepancyThreshold, 2) : 
-                    discrepancyThreshold
-                }x ratio
+                Showing {chartData.length} categories with discrepancies ≥ {discrepancyThreshold}x ratio
               </span>
             ) : (
               <span> • {chartData.length} categories</span>
@@ -824,23 +806,11 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
           </div>
         </div>
         
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* View Mode Selection */}
+        <div className="grid grid-cols-[200px_1fr_1fr] gap-6">
+          {/* Column 1: View Mode Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">View Mode</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => handleViewModeChange('top-models')}
-                className={`flex items-center justify-center px-3 py-2 text-sm rounded-md border transition-colors ${
-                  viewMode === 'top-models'
-                    ? 'bg-blue-500 text-white border-blue-500'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                <Users className="h-4 w-4 mr-2" />
-                Top Models
-              </button>
-              
+            <div className="grid grid-cols-1 gap-2">
               <button
                 onClick={() => handleViewModeChange('selected-models')}
                 className={`flex items-center justify-center px-3 py-2 text-sm rounded-md border transition-colors ${
@@ -864,29 +834,41 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                 <Grid className="h-4 w-4 mr-2" />
                 Heatmap View
               </button>
-              
-              <button
-                onClick={() => handleViewModeChange('all-models')}
-                className={`flex items-center justify-center px-3 py-2 text-sm rounded-md border transition-colors ${
-                  viewMode === 'all-models'
-                    ? 'bg-blue-500 text-white border-blue-500'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                <BarChart3 className="h-4 w-4 mr-2" />
-                All Models
-              </button>
             </div>
           </div>
 
-          {/* Discrepancy Filter Controls */}
+          {/* Column 2: Model Selection */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              <div className="flex items-center space-x-2">
-                <TrendingUp className="h-4 w-4" />
-                <span>Advanced Filters</span>
+            {viewMode === 'selected-models' ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Models ({selectedModels.length} selected)
+                </label>
+                <div className="max-h-32 overflow-y-auto border border-gray-300 rounded-md p-2">
+                  {modelNames.map(model => (
+                    <label key={model} className="flex items-center space-x-2 text-xs py-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedModels.includes(model)}
+                        onChange={() => handleModelToggle(model)}
+                        className="rounded"
+                      />
+                      <span className="truncate" title={model}>{model}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </label>
+            ) : (
+              <div className="text-sm text-gray-600">
+                <p className="font-medium mb-2">Heatmap View</p>
+                <p>Shows intensity of model activity across categories. Darker colors indicate higher activity.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Column 3: Advanced Filters */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">Advanced Filters</label>
             <div className="space-y-3">
               <label className="flex items-center space-x-2">
                 <input
@@ -916,17 +898,14 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                     onChange={(e) => setFilterBattleModels(e.target.checked)}
                     className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                   />
-                  <span className="text-sm text-gray-700">Filter battles: only show where both models are selected</span>
+                  <span className="text-sm text-gray-700">Only show where both models are selected</span>
                 </label>
               )}
               
               {showDiscrepancyOnly && (
                 <div>
                   <label className="block text-xs text-gray-600 mb-1">
-                    {viewMode === 'all-models' ? 
-                      `Minimum ratio (higher/lower): ${Math.max(discrepancyThreshold, 2)}x (enhanced for all-models)` :
-                      `Minimum ratio (higher/lower): ${discrepancyThreshold}x`
-                    }
+                    Minimum ratio (higher/lower): {discrepancyThreshold}x
                   </label>
                   <input
                     type="range"
@@ -941,73 +920,9 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                     <span>1.5x</span>
                     <span>10x</span>
                   </div>
-                  
-                  {viewMode === 'all-models' && (
-                    <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-700">
-                      <strong>All-models mode:</strong> Enhanced filtering applies stricter criteria, requiring meaningful absolute differences and focusing on categories where models actually have data.
-                    </div>
-                  )}
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Mode-specific Controls */}
-          <div>
-            {viewMode === 'top-models' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Number of Top Models: {topModelCount}
-                </label>
-                <input
-                  type="range"
-                  min="3"
-                  max="8"
-                  value={topModelCount}
-                  onChange={(e) => setTopModelCount(parseInt(e.target.value))}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
-                  <span>3</span>
-                  <span>8</span>
-                </div>
-              </div>
-            )}
-            
-            {viewMode === 'selected-models' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Models ({selectedModels.length} selected)
-                </label>
-                <div className="max-h-32 overflow-y-auto border border-gray-300 rounded-md p-2">
-                  {modelNames.map(model => (
-                    <label key={model} className="flex items-center space-x-2 text-xs py-1">
-                      <input
-                        type="checkbox"
-                        checked={selectedModels.includes(model)}
-                        onChange={() => handleModelToggle(model)}
-                        className="rounded"
-                      />
-                      <span className="truncate" title={model}>{model}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {viewMode === 'heatmap' && (
-              <div className="text-sm text-gray-600">
-                <p className="font-medium mb-2">Heatmap View</p>
-                <p>Shows intensity of model activity across categories. Darker colors indicate higher activity.</p>
-              </div>
-            )}
-            
-            {viewMode === 'all-models' && (
-              <div className="text-sm text-orange-600">
-                <p className="font-medium mb-2">⚠️ All Models View</p>
-                <p>Showing all {modelNames.length} models. This may be cluttered with many models.</p>
-              </div>
-            )}
           </div>
         </div>
       </div>
