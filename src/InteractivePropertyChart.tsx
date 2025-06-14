@@ -62,6 +62,9 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
   // Add state for group by prompt functionality
   const [groupByPrompt, setGroupByPrompt] = useState(false);
   const [expandedPrompts, setExpandedPrompts] = useState<Set<string>>(new Set());
+  
+  // Add new state for battle model filtering
+  const [filterBattleModels, setFilterBattleModels] = useState(false);
 
   // Get unique model names from the data
   const modelNames = useMemo(() => {
@@ -182,14 +185,25 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       console.log('🚨 After unexpected filter:', filteredData.length);
     }
 
-    // Filter by active models only (except for heatmap view)
-    if (viewMode !== 'heatmap') {
+    // Filter by active models (except in heatmap mode where we want to see all)
+    // Skip this filter if battle model filtering is enabled - let battle filtering handle model selection
+    if (viewMode !== 'heatmap' && viewMode !== 'all-models' && !(filterBattleModels && viewMode === 'selected-models' && selectedModels.length > 0)) {
       filteredData = filteredData.filter(item => activeModels.includes(item.model));
-      console.log('🎯 After model filter:', filteredData.length, 'activeModels:', activeModels);
+    }
+
+    // Add battle model filtering - only show battles where both participants are in selected models
+    if (filterBattleModels && viewMode === 'selected-models' && selectedModels.length > 0) {
+      filteredData = filteredData.filter(item => 
+        selectedModels.includes(item.model_1_name) && selectedModels.includes(item.model_2_name)
+      );
+      console.log('⚔️ After battle model filter:', filteredData.length, 'selectedModels:', selectedModels);
     }
 
     // Group data based on current level and split by model
     let groupedData: Record<string, Record<string, number> & { total: number }> = {};
+    
+    // When battle filtering is enabled, don't apply the regular model filter in the grouping logic
+    const useBattleFiltering = filterBattleModels && viewMode === 'selected-models' && selectedModels.length > 0;
     
     switch (drillState.level) {
       case 'coarse':
@@ -205,7 +219,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
               groupedData[key][model] = 0;
             });
           }
-          if (activeModels.includes(item.model)) {
+          if (useBattleFiltering || activeModels.includes(item.model)) {
             groupedData[key][item.model] = (groupedData[key][item.model] || 0) + 1;
             groupedData[key].total += 1;
           }
@@ -224,7 +238,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
               groupedData[key][model] = 0;
             });
           }
-          if (activeModels.includes(item.model)) {
+          if (useBattleFiltering || activeModels.includes(item.model)) {
             groupedData[key][item.model] = (groupedData[key][item.model] || 0) + 1;
             groupedData[key].total += 1;
           }
@@ -243,7 +257,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
               groupedData[key][model] = 0;
             });
           }
-          if (activeModels.includes(item.model)) {
+          if (useBattleFiltering || activeModels.includes(item.model)) {
             groupedData[key][item.model] = (groupedData[key][item.model] || 0) + 1;
             groupedData[key].total += 1;
           }
@@ -316,7 +330,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     }
     
     return finalData;
-  }, [data, drillState, activeModels, viewMode, showDiscrepancyOnly, discrepancyThreshold, showUnexpectedOnly]);
+  }, [data, drillState, activeModels, viewMode, showDiscrepancyOnly, discrepancyThreshold, showUnexpectedOnly, filterBattleModels, selectedModels]);
 
   // Generate heatmap data for heatmap view
   const heatmapData = useMemo(() => {
@@ -335,6 +349,13 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       filteredData = filteredData.filter(item => 
         item.unexpected_behavior && 
         item.unexpected_behavior.toLowerCase() === 'true'
+      );
+    }
+
+    // Add battle model filtering for heatmap
+    if (filterBattleModels && selectedModels.length > 0) {
+      filteredData = filteredData.filter(item => 
+        selectedModels.includes(item.model_1_name) && selectedModels.includes(item.model_2_name)
       );
     }
 
@@ -384,7 +405,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     });
 
     return heatmapGrid;
-  }, [data, drillState, modelNames, viewMode, showUnexpectedOnly]);
+  }, [data, drillState, modelNames, viewMode, showUnexpectedOnly, filterBattleModels, selectedModels]);
 
   // Get filtered data for the table view (memoized and with search)
   const filteredTableData = useMemo(() => {
@@ -409,8 +430,15 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     }
     
     // Filter by active models (except in heatmap mode where we want to see all)
-    if (viewMode !== 'heatmap' && viewMode !== 'all-models') {
+    if (viewMode !== 'heatmap' && viewMode !== 'all-models' && !(filterBattleModels && viewMode === 'selected-models' && selectedModels.length > 0)) {
       filteredData = filteredData.filter(item => activeModels.includes(item.model));
+    }
+    
+    // Add battle model filtering for table data
+    if (filterBattleModels && viewMode === 'selected-models' && selectedModels.length > 0) {
+      filteredData = filteredData.filter(item => 
+        selectedModels.includes(item.model_1_name) && selectedModels.includes(item.model_2_name)
+      );
     }
     
     // Apply search filter
@@ -437,7 +465,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     });
     
     return filteredData;
-  }, [data, drillState, tableSearch, viewMode, activeModels, showUnexpectedOnly]);
+  }, [data, drillState, tableSearch, viewMode, activeModels, showUnexpectedOnly, filterBattleModels, selectedModels]);
 
   // Paginated table data
   const paginatedTableData = useMemo(() => {
@@ -880,6 +908,18 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                 <span className="text-sm text-gray-700">Show only categories with significant discrepancies</span>
               </label>
               
+              {viewMode === 'selected-models' && (
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={filterBattleModels}
+                    onChange={(e) => setFilterBattleModels(e.target.checked)}
+                    className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span className="text-sm text-gray-700">Filter battles: only show where both models are selected</span>
+                </label>
+              )}
+              
               {showDiscrepancyOnly && (
                 <div>
                   <label className="block text-xs text-gray-600 mb-1">
@@ -1122,7 +1162,9 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                   interval={0}
                   tick={{ fontSize: 12 }}
                 />
-                <YAxis label={{ value: 'Count', angle: -90, position: 'insideLeft' }} />
+                <YAxis 
+                  label={{ value: 'Count', angle: -90, position: 'insideLeft' }} 
+                />
                 <Tooltip 
                   content={<CustomTooltip />} 
                   cursor={{ fill: 'rgba(0, 0, 0, 0.1)' }}

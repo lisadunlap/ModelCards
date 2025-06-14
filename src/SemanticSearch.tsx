@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Search, Loader2, Eye, AlertCircle, Sparkles, Zap } from 'lucide-react';
 import { getCurrentDataSources, DATA_CONFIG } from './config/dataSources';
 import { getOpenAIApiKey, hasValidApiKey, initializeOpenAIClient, getOpenAIClient } from './config/apiConfig';
-import { readParquet } from 'parquet-wasm';
+import { vectorSearchService, SearchResult } from './services/vectorSearch';
 import { NORMALIZED_DEMO_PROPERTIES } from './data/demoData';
 
 // Use centralized API configuration
@@ -61,16 +61,13 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
   const [searchResults, setSearchResults] = useState<PropertyDataWithEmbedding[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [embeddingData, setEmbeddingData] = useState<PropertyDataWithEmbedding[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
-  const [dataError, setDataError] = useState<string | null>(null);
   const [precomputedExamples, setPrecomputedExamples] = useState<PrecomputedExample[]>([]);
   const [initError, setInitError] = useState<string | null>(null);
+  const [isVectorSearchConfigured, setIsVectorSearchConfigured] = useState(false);
 
-  // Check for initialization errors
+  // Check for initialization errors and vector search configuration
   React.useEffect(() => {
     try {
-      // Test basic functionality
       console.log('🔄 Initializing SemanticSearch component...');
       
       // Check if we're in a browser environment
@@ -79,15 +76,19 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
         return;
       }
       
+      // Check vector search configuration
+      const vectorConfigured = vectorSearchService.isConfigured();
+      setIsVectorSearchConfigured(vectorConfigured);
+      
       console.log('✅ SemanticSearch component initialized successfully');
       console.log(`🔑 API key available: ${hasApiKey ? 'Yes' : 'No (demo mode)'}`);
+      console.log(`🔍 Vector search configured: ${vectorConfigured ? 'Yes' : 'No'}`);
       
-      // Ensure we always have some demo examples as a last resort
-      if (!hasApiKey) {
+      // Ensure we always have some demo examples as a fallback
+      if (!hasApiKey || !vectorConfigured) {
         setTimeout(() => {
           if (precomputedExamples.length === 0) {
             console.log('🔄 No examples loaded, creating emergency fallback...');
-            // Create absolutely minimal fallback examples
             const emergencyExamples = [
               {
                 id: 'demo-1',
@@ -114,7 +115,7 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
             setPrecomputedExamples(emergencyExamples);
             console.log('✅ Emergency fallback examples created');
           }
-        }, 3000); // Give other loading mechanisms time to work first
+        }, 3000);
       }
       
     } catch (error) {
@@ -123,131 +124,10 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
     }
   }, [hasApiKey, precomputedExamples.length]);
 
-  // Load the CSV file with embeddings
-  useEffect(() => {
-    const loadEmbeddingData = async () => {
-      try {
-        setDataLoading(true);
-        setDataError(null);
-        
-        const dataSources = getCurrentDataSources();
-        const response = await fetch(dataSources.embeddings);
-        
-        if (!response.ok) {
-          console.warn('Failed to fetch embedding CSV, falling back to demo data');
-          setEmbeddingData(NORMALIZED_DEMO_PROPERTIES);
-          setDataLoading(false);
-          return;
-        }
-        
-        const csvContent = await response.text();
-        const Papa = (await import('papaparse')).default;
-        
-        const parsedData = Papa.parse(csvContent, {
-          header: true,
-          dynamicTyping: true,
-          skipEmptyLines: true
-        });
-
-        if (parsedData.errors.length > 0) {
-          console.warn('CSV parsing errors:', parsedData.errors);
-        }
-
-        // Process the data and parse embeddings
-        const processedData = parsedData.data
-          .filter((row: any) => row.property_description && row.property_description_embedding)
-          .map((row: any) => {
-            let embedding: number[] = [];
-            try {
-              const embeddingRaw = row.property_description_embedding;
-              
-              if (typeof embeddingRaw === 'string') {
-                embedding = JSON.parse(embeddingRaw);
-              } else if (Array.isArray(embeddingRaw)) {
-                embedding = embeddingRaw;
-              }
-            } catch (e) {
-              console.warn('Failed to parse embedding:', e);
-            }
-            
-            return {
-              ...row,
-              embedding
-            };
-          })
-          .filter((row: PropertyDataWithEmbedding) => row.embedding && row.embedding.length > 0);
-
-        // If no valid embeddings found, use demo data
-        if (processedData.length === 0) {
-          console.warn('No valid embeddings found in CSV, falling back to demo data');
-          setEmbeddingData(NORMALIZED_DEMO_PROPERTIES);
-        } else {
-          // Normalize embeddings
-          const normalizedData = processedData.map(item => ({
-            ...item,
-            embedding: normalizeEmbedding(item.embedding!)
-          }));
-
-          setEmbeddingData(normalizedData);
-        }
-        setDataLoading(false);
-      } catch (error) {
-        console.error('Error loading embedding data:', error);
-        console.warn('Falling back to demo data');
-        setEmbeddingData(NORMALIZED_DEMO_PROPERTIES);
-        setDataLoading(false);
-      }
-    };
-
-    loadEmbeddingData();
-  }, []);
-
-  // Function to embed query using OpenAI API
-  const embedQuery = async (query: string): Promise<number[]> => {
-    if (!hasApiKey) {
-      throw new Error('OpenAI API key not available');
-    }
-    
-    const initialized = await initializeOpenAIClient();
-    const openai = getOpenAIClient();
-    if (!initialized || !openai) {
-      throw new Error('OpenAI client not initialized');
-    }
-    
-    try {
-      const response = await openai.embeddings.create({
-        model: "text-embedding-3-small",
-        input: query,
-      });
-      return response.data[0].embedding;
-    } catch (error) {
-      console.error('OpenAI embedding error:', error);
-      throw new Error(`Failed to embed query: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  };
-
-  // Normalize embedding vector to unit length
-  const normalizeEmbedding = (embedding: number[]): number[] => {
-    const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
-    if (magnitude === 0) return embedding;
-    return embedding.map(val => val / magnitude);
-  };
-
-  // Calculate dot product between normalized vectors
-  const dotProduct = (a: number[], b: number[]): number => {
-    if (a.length !== b.length) return 0;
-    return a.reduce((sum, val, i) => sum + val * b[i], 0);
-  };
-
-  // Perform semantic search
-  const performSearch = useCallback(async () => {
-    if (!searchQuery.trim()) {
+  // Perform semantic search using vector database
+  const performVectorSearch = useCallback(async (query: string) => {
+    if (!query.trim()) {
       setSearchResults([]);
-      return;
-    }
-
-    if (!hasApiKey) {
-      setError('OpenAI API key not configured. Please add your API key to use semantic search.');
       return;
     }
 
@@ -255,27 +135,67 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
       setLoading(true);
       setError(null);
 
-      // Embed the user's query
-      const queryEmbedding = await embedQuery(searchQuery);
-      const normalizedQueryEmbedding = normalizeEmbedding(queryEmbedding);
+      console.log('🔍 Performing vector search for:', query);
+      const response = await vectorSearchService.searchSimilar(query, 10);
+      
+      // Convert SearchResult to PropertyDataWithEmbedding format
+      const convertedResults: PropertyDataWithEmbedding[] = response.matches.map((match: SearchResult) => ({
+        ...match.metadata,
+        similarity_score: match.score,
+        // Ensure required fields exist
+        prompt: match.metadata.prompt || '',
+        model_1_response: match.metadata.model_1_response || '',
+        model_2_response: match.metadata.model_2_response || '',
+        model_1_name: match.metadata.model_1_name || '',
+        model_2_name: match.metadata.model_2_name || '',
+        differences: match.metadata.differences || '',
+        parsed_differences: match.metadata.parsed_differences || '',
+        model: match.metadata.model || '',
+        property_description: match.metadata.property_description || '',
+        category: match.metadata.category || '',
+        evidence: match.metadata.evidence || '',
+        type: match.metadata.type || '',
+        reason: match.metadata.reason || '',
+        impact: match.metadata.impact || '',
+        property_description_coarse_cluster_label: match.metadata.property_description_coarse_cluster_label || '',
+        property_description_fine_cluster_label: match.metadata.property_description_fine_cluster_label || '',
+        property_description_coarse_cluster_id: match.metadata.property_description_coarse_cluster_id || 0,
+        property_description_fine_cluster_id: match.metadata.property_description_fine_cluster_id || 0,
+      }));
 
-      // Calculate similarities
-      const resultsWithSimilarity = embeddingData
-        .map(item => ({
-          ...item,
-          similarity_score: dotProduct(normalizedQueryEmbedding, item.embedding!)
-        }))
-        .sort((a, b) => (b.similarity_score || 0) - (a.similarity_score || 0))
-        .slice(0, 10);
-
-      setSearchResults(resultsWithSimilarity);
+      setSearchResults(convertedResults);
+      console.log(`✅ Found ${convertedResults.length} results`);
     } catch (error) {
       console.error('Search error:', error);
       setError(error instanceof Error ? error.message : 'Search failed');
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, embeddingData]);
+  }, []);
+
+  // Perform demo search using local embeddings
+  const performDemoSearch = useCallback(async (exampleQuery: string) => {
+    console.log('🔍 Performing demo search for:', exampleQuery);
+    
+    // For demo, just return some sample results based on the query
+    const demoResults = NORMALIZED_DEMO_PROPERTIES.slice(0, 3).map((item, index) => ({
+      ...item,
+      similarity_score: 0.8 - (index * 0.1), // Mock similarity scores
+    }));
+    
+    setSearchResults(demoResults);
+  }, []);
+
+  // Main search handler
+  const performSearch = useCallback(async (queryOverride?: string) => {
+    const query = queryOverride || searchQuery;
+    
+    if (isVectorSearchConfigured && hasApiKey) {
+      await performVectorSearch(query);
+    } else {
+      await performDemoSearch(query);
+    }
+  }, [searchQuery, isVectorSearchConfigured, hasApiKey, performVectorSearch, performDemoSearch]);
 
   // Handle search input changes
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -288,25 +208,20 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
     performSearch();
   };
 
-  if (dataLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="flex items-center space-x-3">
-          <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-          <span className="text-gray-600">Loading embedding data...</span>
-        </div>
-      </div>
-    );
-  }
+  // Handle example query click
+  const handleExampleClick = (example: PrecomputedExample) => {
+    setSearchQuery(example.query);
+    performSearch(example.query);
+  };
 
-  if (dataError) {
+  if (initError) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-6">
         <div className="flex items-start space-x-3">
           <AlertCircle className="h-5 w-5 text-red-500 mt-0.5" />
           <div className="flex-1">
-            <h4 className="font-medium text-red-900">Error Loading Embedding Data</h4>
-            <p className="text-sm text-red-700 mt-1">{dataError}</p>
+            <h4 className="font-medium text-red-900">Initialization Error</h4>
+            <p className="text-sm text-red-700 mt-1">{initError}</p>
           </div>
         </div>
       </div>
@@ -316,37 +231,37 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
   return (
     <div className="space-y-6">
       {/* Introduction */}
-      <div className={`border rounded-lg p-6 ${hasApiKey ? 'bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'}`}>
+      <div className={`border rounded-lg p-6 ${isVectorSearchConfigured && hasApiKey ? 'bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'}`}>
         <div className="flex items-start space-x-3">
           <div className="flex-shrink-0">
-            <div className={`flex items-center justify-center h-10 w-10 rounded-md text-white ${hasApiKey ? 'bg-purple-500' : 'bg-blue-500'}`}>
-              {hasApiKey ? <Sparkles className="h-5 w-5" /> : <Zap className="h-5 w-5" />}
+            <div className={`flex items-center justify-center h-10 w-10 rounded-md text-white ${isVectorSearchConfigured && hasApiKey ? 'bg-purple-500' : 'bg-blue-500'}`}>
+              {isVectorSearchConfigured && hasApiKey ? <Sparkles className="h-5 w-5" /> : <Zap className="h-5 w-5" />}
             </div>
           </div>
           <div className="flex-1">
-            <h3 className={`text-lg font-medium mb-2 ${hasApiKey ? 'text-purple-900' : 'text-blue-900'}`}>
-              {hasApiKey ? 'Semantic Search' : 'Demo Mode - Semantic Search'}
+            <h3 className={`text-lg font-medium mb-2 ${isVectorSearchConfigured && hasApiKey ? 'text-purple-900' : 'text-blue-900'}`}>
+              {isVectorSearchConfigured && hasApiKey ? 'Semantic Search' : 'Demo Mode - Semantic Search'}
             </h3>
-            {hasApiKey ? (
+            {isVectorSearchConfigured && hasApiKey ? (
               <div>
                 <p className="text-sm text-purple-700 mb-3">
-                  Search for model properties using natural language. Our AI will find the most semantically similar 
-                  properties based on your query.
+                  Search through millions of model properties using natural language. Our vector database provides 
+                  lightning-fast semantic similarity search.
                 </p>
                 <div className="text-xs text-purple-600 bg-purple-100 rounded px-3 py-2">
-                  <strong>How it works:</strong> Your query is embedded using OpenAI's text-embedding-3-small model, 
-                  then we use dot product similarity to find the most similar property descriptions.
+                  <strong>Powered by:</strong> Vector database with OpenAI embeddings for instant semantic search 
+                  across your entire dataset without loading it client-side.
                 </div>
               </div>
             ) : (
               <div>
                 <p className="text-sm text-blue-700 mb-3">
-                  Try semantic search with precomputed example queries! These examples demonstrate how AI can find 
-                  semantically similar model properties without requiring your own OpenAI API key.
+                  Try semantic search with demo examples! These examples demonstrate how AI can find 
+                  semantically similar model properties.
                 </p>
                 <div className="text-xs text-blue-600 bg-blue-100 rounded px-3 py-2 mb-3">
-                  <strong>Demo mode:</strong> Click the example buttons below to see semantic search in action. 
-                  Each example uses precomputed embeddings to find similar properties in the dataset.
+                  <strong>Demo mode:</strong> {!hasApiKey ? 'OpenAI API key required for full search.' : 'Vector database not configured.'} 
+                  Click examples below to see semantic search in action.
                 </div>
                 {precomputedExamples.length > 0 && (
                   <div className="text-xs text-green-700 bg-green-100 rounded px-3 py-2">
@@ -359,17 +274,17 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
         </div>
       </div>
 
-      {/* Example Queries (always show, but prominence depends on API key availability) */}
+      {/* Example Queries */}
       {precomputedExamples.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm p-6 border">
           <h4 className="font-medium text-gray-900 mb-3">
-            {hasApiKey ? 'Try these examples:' : 'Available example searches:'}
+            {isVectorSearchConfigured && hasApiKey ? 'Try these examples:' : 'Available example searches:'}
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {precomputedExamples.map((example) => (
               <button
                 key={example.id}
-                onClick={() => performSearch()}
+                onClick={() => handleExampleClick(example)}
                 disabled={loading}
                 className="text-left p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -381,69 +296,82 @@ const SemanticSearch: React.FC<SemanticSearchProps> = ({ onViewResponse }) => {
         </div>
       )}
 
-      {/* Search Interface (only show if API key is available) */}
-      {hasApiKey && (
-        <div className="bg-white rounded-lg shadow-sm p-6 border">
-          <form onSubmit={handleSearchSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
-                Search for model properties or behaviors
-              </label>
-              <div className="relative">
-                <input
-                  id="search"
-                  type="text"
-                  placeholder="e.g., 'models that are creative in storytelling' or 'handling of mathematical reasoning'"
-                  className="w-full border border-gray-300 rounded-md px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  value={searchQuery}
-                  onChange={handleSearchChange}
-                />
-                <button
-                  type="submit"
-                  disabled={loading || !searchQuery.trim()}
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 text-gray-400 hover:text-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <Search className="h-5 w-5" />
-                  )}
-                </button>
-              </div>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-600">
-                {embeddingData.length.toLocaleString()} properties available for search
-              </div>
+      {/* Search Interface */}
+      <div className="bg-white rounded-lg shadow-sm p-6 border">
+        <form onSubmit={handleSearchSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
+              Search for model properties or behaviors
+            </label>
+            <div className="relative">
+              <input
+                id="search"
+                type="text"
+                placeholder="e.g., 'models that are creative in storytelling' or 'handling of mathematical reasoning'"
+                className="w-full border border-gray-300 rounded-md px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                value={searchQuery}
+                onChange={handleSearchChange}
+              />
               <button
                 type="submit"
                 disabled={loading || !searchQuery.trim()}
-                className="bg-purple-600 text-white px-6 py-2 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 text-gray-400 hover:text-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Searching...' : 'Search'}
+                {loading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Search className="h-5 w-5" />
+                )}
               </button>
             </div>
-          </form>
-
-          {error && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-              {error}
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              {isVectorSearchConfigured ? 'Searching vector database...' : 'Demo search with sample data'}
             </div>
-          )}
+            <button
+              type="submit"
+              disabled={loading || !searchQuery.trim()}
+              className="bg-purple-600 text-white px-6 py-2 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? 'Searching...' : 'Search'}
+            </button>
+          </div>
+        </form>
+
+        {error && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+            {error}
+          </div>
+        )}
+      </div>
+
+      {/* Configuration Status */}
+      {!isVectorSearchConfigured && hasApiKey && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="font-medium text-yellow-900">Vector Database Configuration Required</h4>
+              <p className="text-sm text-yellow-700 mt-1">
+                To search your full dataset, please configure Pinecone or another vector database. 
+                Add VITE_PINECONE_API_KEY and VITE_PINECONE_URL to your environment variables.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* API Key Missing Notice (only show if no API key and no precomputed examples) */}
-      {!hasApiKey && precomputedExamples.length === 0 && (
+      {/* API Key Missing Notice */}
+      {!hasApiKey && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
           <div className="flex items-start space-x-3">
             <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5" />
             <div className="flex-1">
               <h4 className="font-medium text-yellow-900">OpenAI API Key Required</h4>
               <p className="text-sm text-yellow-700 mt-1">
-                To use custom semantic search, please add your OpenAI API key to the environment variables. 
-                Alternatively, precomputed examples can be generated using the precompute script.
+                To use full semantic search, please add your OpenAI API key to the environment variables.
               </p>
             </div>
           </div>

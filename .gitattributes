@@ -1,3 +1,4 @@
 public/all_one_sided_comparisons_clustered_*.csv filter=lfs diff=lfs merge=lfs -text
 public/embeddings_part_*.csv filter=lfs diff=lfs merge=lfs -text
 public/optimized_data/* filter=lfs diff=lfs merge=lfs -text
+public/*.gz filter=lfs diff=lfs merge=lfs -text
