@@ -98,7 +98,13 @@ class VectorSearchService {
 
   // Helper method to check if service is configured
   isConfigured(): boolean {
-    return !!(this.pineconeApiKey && this.pineconeUrl && hasValidApiKey());
+    const configured = !!(this.pineconeApiKey && this.pineconeUrl && hasValidApiKey());
+    console.log('🔧 Vector Search Configuration Check:');
+    console.log(`   - Pinecone API Key: ${this.pineconeApiKey ? '✅ Present' : '❌ Missing'}`);
+    console.log(`   - Pinecone URL: ${this.pineconeUrl ? '✅ Present' : '❌ Missing'}`);
+    console.log(`   - OpenAI API Key: ${hasValidApiKey() ? '✅ Present' : '❌ Missing'}`);
+    console.log(`   - Overall Status: ${configured ? '✅ PINECONE ENABLED' : '❌ DEMO MODE'}`);
+    return configured;
   }
 }
 
