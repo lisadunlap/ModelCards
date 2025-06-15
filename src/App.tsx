@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Bot, Database, Brain, X, Eye, ExternalLink, TrendingUp, PenTool } from 'lucide-react';
+import { BarChart3, Bot, Database, Brain, X, Eye, ExternalLink, TrendingUp, PenTool, FileSearch } from 'lucide-react';
 import InteractiveHierarchicalChart from './InteractiveHierarchicalChart';
 import InteractivePropertyChart from './InteractivePropertyChart';
 import SemanticSearch from './SemanticSearch';
 import ModelSummaries from './ModelSummaries';
+import KeywordSearch from './KeywordSearch';
 import ContentRenderer from './components/ContentRenderer';
 import { getCurrentDataSources, validateDataSources, DATA_CONFIG } from './config/dataSources';
 import { initializeModelColors, getModelColor } from './config/modelColors';
@@ -193,7 +194,8 @@ const ModelDifferenceAnalyzer = () => {
     { id: 'overview', label: 'Overview', icon: Database },
     { id: 'properties', label: 'Property Analysis', icon: BarChart3 },
     { id: 'summaries', label: 'Summaries', icon: TrendingUp },
-    { id: 'search', label: 'Semantic Search', icon: Brain }
+    { id: 'search', label: 'Semantic Search', icon: Brain },
+    { id: 'keyword-search', label: 'Keyword Search', icon: FileSearch }
   ];
 
   // Get data sources for display
@@ -380,6 +382,13 @@ const ModelDifferenceAnalyzer = () => {
                 setSelectedItem(item);
                 setSidebarOpen(true);
               }} 
+            />
+          )}
+
+          {selectedView === 'keyword-search' && propertyData.length > 0 && (
+            <KeywordSearch 
+              data={propertyData}
+              onViewResponse={handleViewProperty}
             />
           )}
         </div>
