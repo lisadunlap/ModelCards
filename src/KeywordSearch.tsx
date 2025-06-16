@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { Search, BarChart3, Eye, TrendingUp, ChevronUp, ChevronDown } from 'lucide-react';
 import { getModelColor } from './config/modelColors';
+import InfoTooltip from './components/InfoTooltip';
 
 interface PropertyData {
   prompt: string;
@@ -110,73 +111,97 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
     const query = searchQuery.toLowerCase().trim();
     const queryTerms = query.split(/\s+/).filter(term => term.length > 2);
 
-    // Group data by fine cluster
+    // Group by fine cluster and calculate relevance scores
     const clusterGroups: Record<string, PropertyData[]> = {};
+    
     data.forEach(item => {
-      const cluster = item.property_description_fine_cluster_label;
-      if (!cluster || cluster === 'Unknown' || cluster === '') return;
+      const clusterName = item.property_description_fine_cluster_label;
+      if (!clusterName || clusterName === 'Unknown') return;
       
-      if (!clusterGroups[cluster]) {
-        clusterGroups[cluster] = [];
+      if (!clusterGroups[clusterName]) {
+        clusterGroups[clusterName] = [];
       }
-      clusterGroups[cluster].push(item);
+      clusterGroups[clusterName].push(item);
     });
 
-    // Calculate relevance scores for each cluster
+    // Calculate relevance scores and filter clusters
     const clusterMatches: ClusterMatch[] = [];
     
     Object.entries(clusterGroups).forEach(([clusterName, items]) => {
-      // Skip clusters with insufficient samples
-      if (items.length < minSampleThreshold) return;
-
-      // Calculate relevance score based on cluster name and property descriptions
-      let relevanceScore = 0;
-      const clusterText = clusterName.toLowerCase();
+      // Shuffle items within each cluster
+      const shuffledItems = [...items].sort(() => Math.random() - 0.5);
       
-      // Score based on cluster name matches
-      queryTerms.forEach(term => {
-        if (clusterText.includes(term)) {
-          relevanceScore += 10; // High score for cluster name matches
-        }
-      });
-
-      // Score based on property description matches
-      const propertyDescriptions = items.map(item => item.property_description.toLowerCase()).join(' ');
-      queryTerms.forEach(term => {
-        const matches = (propertyDescriptions.match(new RegExp(term, 'g')) || []).length;
-        relevanceScore += matches * 0.5; // Lower score for description matches
-      });
-
-      // Only include clusters with some relevance
-      if (relevanceScore > 0) {
-        // Count models in this cluster
-        const modelCounts: Record<string, number> = {};
-        items.forEach(item => {
-          if (item.model && item.model !== 'Unknown') {
-            modelCounts[item.model] = (modelCounts[item.model] || 0) + 1;
+      // Calculate relevance score
+      let relevanceScore = 0;
+      
+      // Check cluster name for exact matches (higher weight)
+      const clusterWords = clusterName.toLowerCase().split(/\s+/);
+      const queryWords = query.split(/\s+/);
+      
+      queryWords.forEach(queryWord => {
+        clusterWords.forEach(clusterWord => {
+          if (clusterWord.includes(queryWord) || queryWord.includes(clusterWord)) {
+            relevanceScore += 10; // High score for cluster name matches
           }
         });
-
-        // Get representative cluster description from first item
-        const clusterDescription = items[0]?.property_description || clusterName;
-
+      });
+      
+      // Check descriptions for matches (lower weight)
+      shuffledItems.forEach(item => {
+        const description = item.property_description.toLowerCase();
+        queryWords.forEach(queryWord => {
+          if (description.includes(queryWord)) {
+            relevanceScore += 0.5; // Lower score for description matches
+          }
+        });
+      });
+      
+      // Only include clusters with minimum samples and relevance
+      if (shuffledItems.length >= minSampleThreshold && relevanceScore > 0) {
+        // Count models in this cluster
+        const modelCounts: Record<string, number> = {};
+        shuffledItems.forEach(item => {
+          const model = item.model;
+          if (model && model !== 'Unknown') {
+            modelCounts[model] = (modelCounts[model] || 0) + 1;
+          }
+        });
+        
         clusterMatches.push({
           clusterName,
-          clusterDescription,
-          totalItems: items.length,
+          clusterDescription: shuffledItems[0]?.property_description || '',
+          totalItems: shuffledItems.length,
           modelCounts,
-          matchingItems: items,
+          matchingItems: shuffledItems,
           relevanceScore
         });
       }
     });
 
-    // Sort by relevance score and take top 10
-    const topMatches = clusterMatches
+    // Sort by relevance score and shuffle clusters with same score
+    const sortedResults = clusterMatches
       .sort((a, b) => b.relevanceScore - a.relevanceScore)
       .slice(0, 10);
+    
+    // Group by relevance score and shuffle within each group
+    const groupedByScore: Record<number, ClusterMatch[]> = {};
+    sortedResults.forEach(result => {
+      if (!groupedByScore[result.relevanceScore]) {
+        groupedByScore[result.relevanceScore] = [];
+      }
+      groupedByScore[result.relevanceScore].push(result);
+    });
+    
+    // Shuffle within each score group and flatten
+    const finalResults: ClusterMatch[] = [];
+    Object.keys(groupedByScore)
+      .sort((a, b) => Number(b) - Number(a)) // Sort by score descending
+      .forEach(score => {
+        const shuffledGroup = [...groupedByScore[Number(score)]].sort(() => Math.random() - 0.5);
+        finalResults.push(...shuffledGroup);
+      });
 
-    setSearchResults(topMatches);
+    setSearchResults(finalResults);
   }, [data, searchQuery, minSampleThreshold]);
 
   // Handle search input
@@ -193,6 +218,8 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
   const allModels = useMemo(() => {
     return Array.from(new Set(data.map(item => item.model).filter(model => model && model !== 'Unknown')));
   }, [data]);
+
+  const absoluteCountTooltip = "Shows absolute counts and percentages of property instances for each model within this cluster. Models with higher participation rates will naturally have higher counts.";
 
   return (
     <div className="space-y-6">
@@ -260,9 +287,12 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
       {searchResults.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900">
-              Top 10 Matching Clusters
-            </h3>
+            <div className="flex items-center space-x-2">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Top 10 Matching Clusters
+              </h3>
+              <InfoTooltip content={absoluteCountTooltip} />
+            </div>
             <div className="text-sm text-gray-600">
               Showing {searchResults.length} clusters for "{searchQuery}"
             </div>
@@ -382,9 +412,12 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
 
                     {/* All models distribution */}
                     <div>
-                      <h5 className="text-sm font-medium text-gray-900 mb-3">
-                        Model Distribution ({modelDistribution.length} models)
-                      </h5>
+                      <div className="flex items-center space-x-2 mb-3">
+                        <h5 className="text-sm font-medium text-gray-900">
+                          Model Distribution ({modelDistribution.length} models)
+                        </h5>
+                        <InfoTooltip content={absoluteCountTooltip} iconClassName="h-3 w-3" />
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {modelDistribution.map((modelDist) => (
                           <div key={modelDist.modelName} className="flex items-center space-x-3">

@@ -438,19 +438,22 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       );
     }
     
+    // Shuffle the data to randomize order
+    const shuffledData = [...filteredData].sort(() => Math.random() - 0.5);
+    
     // Debug: Log some info about the filtered data
     console.log('🔍 Filtered table data:', {
-      totalItems: filteredData.length,
-      sampleItems: filteredData.slice(0, 5).map(item => ({
+      totalItems: shuffledData.length,
+      sampleItems: shuffledData.slice(0, 5).map(item => ({
         row_id: item.row_id,
         model: item.model,
         property_desc: item.property_description?.substring(0, 30) + '...'
       })),
-      uniqueRowIds: Array.from(new Set(filteredData.map(item => item.row_id))).slice(0, 10),
-      uniqueModels: Array.from(new Set(filteredData.map(item => item.model))).slice(0, 5)
+      uniqueRowIds: Array.from(new Set(shuffledData.map(item => item.row_id))).slice(0, 10),
+      uniqueModels: Array.from(new Set(shuffledData.map(item => item.model))).slice(0, 5)
     });
     
-    return filteredData;
+    return shuffledData;
   }, [data, drillState, tableSearch, viewMode, activeModels, showUnexpectedOnly, filterBattleModels, selectedModels]);
 
   // Paginated table data

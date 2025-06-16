@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ChevronRight, ArrowLeft, Eye, Home } from 'lucide-react';
+import InfoTooltip from './components/InfoTooltip';
 
 interface DifferenceData {
   difference: string;
@@ -97,7 +98,8 @@ const InteractiveHierarchicalChart: React.FC<InteractiveHierarchicalChartProps> 
       filteredData = filteredData.filter(item => item.category === drillState.category);
     }
     
-    return filteredData;
+    // Shuffle the data to randomize order
+    return [...filteredData].sort(() => Math.random() - 0.5);
   }, [data, drillState]);
 
   const handleBarClick = (data: any) => {
@@ -224,6 +226,8 @@ const InteractiveHierarchicalChart: React.FC<InteractiveHierarchicalChartProps> 
 
   const canDrillDown = drillState.level !== 'category' || !drillState.category;
 
+  const countTooltipContent = "Charts show absolute counts of property instances. Each data point represents one identified property difference between model responses.";
+
   return (
     <div className="space-y-6">
       {/* Navigation */}
@@ -265,7 +269,10 @@ const InteractiveHierarchicalChart: React.FC<InteractiveHierarchicalChartProps> 
       {/* Bar Chart */}
       <div className="bg-white rounded-lg shadow-sm p-6 border">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">{getLevelTitle()}</h3>
+          <div className="flex items-center space-x-2">
+            <h3 className="text-lg font-semibold text-gray-900">{getLevelTitle()}</h3>
+            <InfoTooltip content={countTooltipContent} />
+          </div>
           <div className="text-sm text-gray-600">
             {canDrillDown ? 'Click bars to drill down' : 'Deepest level reached'} • {chartData.length} categories
           </div>
@@ -297,7 +304,10 @@ const InteractiveHierarchicalChart: React.FC<InteractiveHierarchicalChartProps> 
       <div className="bg-white rounded-lg shadow-sm border">
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900">Filtered Data: {getTableTitle()}</h3>
+            <div className="flex items-center space-x-2">
+              <h3 className="text-lg font-semibold text-gray-900">Filtered Data: {getTableTitle()}</h3>
+              <InfoTooltip content="Table shows all individual property instances that match the current filter criteria." />
+            </div>
             <div className="text-sm text-gray-600">
               {tableData.length} items
             </div>

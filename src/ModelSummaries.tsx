@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { Users, TrendingUp, BarChart3, ChevronDown, ChevronRight } from 'lucide-react';
 import { getModelColor } from './config/modelColors';
+import InfoTooltip from './components/InfoTooltip';
 
 interface PropertyData {
   prompt: string;
@@ -229,11 +230,16 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data }) => {
     );
   }
 
+  const proportionTooltip = "Shows what percentage of each cluster's total property instances come from this model. Models with higher participation rates in certain property types will have higher proportions.";
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Model Summaries</h2>
+          <div className="flex items-center space-x-2">
+            <h2 className="text-2xl font-bold text-gray-900">Model Summaries</h2>
+            <InfoTooltip content={proportionTooltip} />
+          </div>
           <p className="text-gray-600 mt-1">
             Top 10 fine-grained clusters by proportion for each model
           </p>

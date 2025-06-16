@@ -54,6 +54,12 @@ const ContentRenderer: React.FC<ContentRendererProps> = ({ content, className })
   if (hasLatex) {
     // First, handle already wrapped math expressions (don't double-wrap)
     if (!content.includes('$')) {
+      // Handle standalone LaTeX symbols like \pi, \alpha, \beta, etc.
+      processedContent = processedContent.replace(
+        /\\(pi|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega|infty|pm|mp|times|div|cdot|sqrt|sum|prod|int|partial|nabla|exists|forall|in|notin|subset|supset|cap|cup|cup|wedge|vee|neg|implies|iff|equiv|approx|neq|leq|geq|ll|gg)\b/g,
+        '$\\$1$'
+      );
+      
       // Handle \boxed{} specifically since that's causing issues
       processedContent = processedContent.replace(
         /\\boxed\{([^}]+)\}/g,

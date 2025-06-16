@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Bot, Database, Brain, X, Eye, ExternalLink, TrendingUp, PenTool, FileSearch } from 'lucide-react';
+import { BarChart3, Bot, Database, Brain, X, Eye, ExternalLink, TrendingUp, PenTool, FileSearch, MessageCircle } from 'lucide-react';
 import InteractiveHierarchicalChart from './InteractiveHierarchicalChart';
 import InteractivePropertyChart from './InteractivePropertyChart';
 import SemanticSearch from './SemanticSearch';
 import ModelSummaries from './ModelSummaries';
 import KeywordSearch from './KeywordSearch';
+import ViewResponses from './ViewResponses';
 import ContentRenderer from './components/ContentRenderer';
 import { getCurrentDataSources, validateDataSources, DATA_CONFIG } from './config/dataSources';
 import { initializeModelColors, getModelColor } from './config/modelColors';
@@ -192,10 +193,11 @@ const ModelDifferenceAnalyzer = () => {
 
   const navigationItems = [
     { id: 'overview', label: 'Overview', icon: Database },
-    { id: 'properties', label: 'Property Analysis', icon: BarChart3 },
     { id: 'summaries', label: 'Summaries', icon: TrendingUp },
+    { id: 'properties', label: 'Property Analysis', icon: BarChart3 },
+    { id: 'keyword-search', label: 'Keyword Search', icon: FileSearch },
     { id: 'search', label: 'Semantic Search', icon: Brain },
-    { id: 'keyword-search', label: 'Keyword Search', icon: FileSearch }
+    { id: 'view-responses', label: 'View Responses', icon: MessageCircle }
   ];
 
   // Get data sources for display
@@ -346,9 +348,85 @@ const ModelDifferenceAnalyzer = () => {
                 </div>
               </div>
               
-              {/* Model List */}
+              {/* Analysis Tools Guide */}
               <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                <h3 className="font-semibold text-blue-800 mb-3">🤖 Models in Dataset</h3>
+                <h3 className="font-semibold text-blue-800 mb-4">🧭 Analysis Tools Guide</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setSelectedView('summaries')}
+                    className="bg-white rounded-lg p-4 border-l-4 border-green-400 hover:bg-green-50 hover:shadow-md transition-all duration-200 text-left cursor-pointer"
+                  >
+                    <div className="flex items-center mb-2">
+                      <TrendingUp className="h-5 w-5 text-green-600 mr-2" />
+                      <h4 className="font-medium text-gray-900">Summaries</h4>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Get high-level overviews of how different models perform across property clusters. 
+                      See top clusters by proportion for each model with interactive filtering.
+                    </p>
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedView('properties')}
+                    className="bg-white rounded-lg p-4 border-l-4 border-blue-400 hover:bg-blue-50 hover:shadow-md transition-all duration-200 text-left cursor-pointer"
+                  >
+                    <div className="flex items-center mb-2">
+                      <BarChart3 className="h-5 w-5 text-blue-600 mr-2" />
+                      <h4 className="font-medium text-gray-900">Property Analysis</h4>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Dive deep into hierarchical clustering data with interactive charts. 
+                      Explore coarse/fine clusters, drill down by category, and examine individual properties.
+                    </p>
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedView('keyword-search')}
+                    className="bg-white rounded-lg p-4 border-l-4 border-purple-400 hover:bg-purple-50 hover:shadow-md transition-all duration-200 text-left cursor-pointer"
+                  >
+                    <div className="flex items-center mb-2">
+                      <FileSearch className="h-5 w-5 text-purple-600 mr-2" />
+                      <h4 className="font-medium text-gray-900">Keyword Search</h4>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Find property clusters using keyword search with smart relevance scoring. 
+                      Search cluster names and descriptions, see model distributions with expandable details.
+                    </p>
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedView('search')}
+                    className="bg-white rounded-lg p-4 border-l-4 border-indigo-400 hover:bg-indigo-50 hover:shadow-md transition-all duration-200 text-left cursor-pointer"
+                  >
+                    <div className="flex items-center mb-2">
+                      <Brain className="h-5 w-5 text-indigo-600 mr-2" />
+                      <h4 className="font-medium text-gray-900">Semantic Search</h4>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      AI-powered semantic search using vector embeddings to find similar properties. 
+                      Uses OpenAI embeddings for intelligent content discovery beyond keyword matching.
+                    </p>
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedView('view-responses')}
+                    className="bg-white rounded-lg p-4 border-l-4 border-orange-400 hover:bg-orange-50 hover:shadow-md transition-all duration-200 text-left cursor-pointer"
+                  >
+                    <div className="flex items-center mb-2">
+                      <MessageCircle className="h-5 w-5 text-orange-600 mr-2" />
+                      <h4 className="font-medium text-gray-900">View Responses</h4>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Compare actual model conversations side-by-side. Search for specific prompts 
+                      or use "Surprise Me!" to randomly explore model battles and responses.
+                    </p>
+                  </button>
+                </div>
+              </div>
+              
+              {/* Model List */}
+              <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-semibold text-gray-800 mb-3">🤖 Models in Dataset</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                   {Array.from(new Set([
                     ...propertyData.map(p => p.model).filter(name => name && name !== 'Unknown')
@@ -387,6 +465,13 @@ const ModelDifferenceAnalyzer = () => {
 
           {selectedView === 'keyword-search' && propertyData.length > 0 && (
             <KeywordSearch 
+              data={propertyData}
+              onViewResponse={handleViewProperty}
+            />
+          )}
+
+          {selectedView === 'view-responses' && propertyData.length > 0 && (
+            <ViewResponses 
               data={propertyData}
               onViewResponse={handleViewProperty}
             />
