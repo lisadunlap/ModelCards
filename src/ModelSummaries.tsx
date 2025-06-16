@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { Users, TrendingUp, BarChart3, ChevronDown, ChevronRight } from 'lucide-react';
 import { getModelColor } from './config/modelColors';
-import InfoTooltip from './components/InfoTooltip';
+import InfoTooltip from './components/InfoTooltip.tsx';
 
 interface PropertyData {
   prompt: string;

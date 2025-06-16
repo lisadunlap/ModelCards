@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ChevronRight, ArrowLeft, Eye, Home } from 'lucide-react';
-import InfoTooltip from './components/InfoTooltip';
+import InfoTooltip from './components/InfoTooltip.tsx';
 
 interface DifferenceData {
   difference: string;
