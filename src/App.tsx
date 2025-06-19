@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Bot, Database, Brain, X, Eye, ExternalLink, TrendingUp, PenTool, FileSearch, MessageCircle } from 'lucide-react';
-import InteractiveHierarchicalChart from './InteractiveHierarchicalChart';
+import { BarChart3, Bot, Database, Brain, X, Eye, ExternalLink, TrendingUp, PenTool, FileSearch, MessageCircle, RefreshCw } from 'lucide-react';
 import InteractivePropertyChart from './InteractivePropertyChart';
 import SemanticSearch from './SemanticSearch';
 import ModelSummaries from './ModelSummaries';
 import KeywordSearch from './KeywordSearch';
 import ViewResponses from './ViewResponses';
 import ContentRenderer from './components/ContentRenderer';
-import { getCurrentDataSources, validateDataSources, DATA_CONFIG } from './config/dataSources';
+import { getCurrentDataSources, validateDataSources, DATA_CONFIG, getPropertyFileOptions, setSelectedPropertyFile } from './config/dataSources';
 import { initializeModelColors, getModelColor } from './config/modelColors';
 import { dataLoader, PropertyData, LoadingProgress } from './services/dataLoader';
 
@@ -22,6 +21,10 @@ const ModelDifferenceAnalyzer = () => {
     loaded: 0,
     total: 0
   });
+  
+  // Add state for data source selection
+  const [selectedDataSource, setSelectedDataSource] = useState<string>('DBSCAN_HIERARCHICAL');
+  const [isReloading, setIsReloading] = useState(false);
   
   // Add state for side panel
   const [selectedItem, setSelectedItem] = useState<PropertyData | null>(null);
@@ -87,12 +90,6 @@ const ModelDifferenceAnalyzer = () => {
       console.log('🎯 All unique models found:', allModels);
       console.log('📊 Total unique models:', allModels.length);
       
-      // Get data index for additional info
-      const dataIndex = dataLoader.getDataIndex();
-      if (dataIndex) {
-        console.log('📊 Data index:', dataIndex);
-      }
-      
       setPropertyData(processedProperties);
       
       // Initialize global model colors
@@ -137,6 +134,31 @@ const ModelDifferenceAnalyzer = () => {
       mounted = false;
     };
   }, []);
+
+  // Handle data source change
+  const handleDataSourceChange = async (newDataSource: string) => {
+    try {
+      setIsReloading(true);
+      setSelectedDataSource(newDataSource);
+      
+      // Update the configuration
+      setSelectedPropertyFile(newDataSource as keyof typeof import('./config/dataSources').DATA_SOURCES.PROPERTY_FILES);
+      
+      // Clear existing data
+      setPropertyData([]);
+      setLoading(true);
+      setError(null);
+      
+      // Reload data with new source
+      await loadDataSafely();
+      
+    } catch (error) {
+      console.error('Error changing data source:', error);
+      setError(error instanceof Error ? error.message : 'Failed to change data source');
+    } finally {
+      setIsReloading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -249,6 +271,42 @@ const ModelDifferenceAnalyzer = () => {
       {/* Header */}
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 py-4">
+          {/* Data Source Selector */}
+          <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Database className="h-5 w-5 text-blue-600" />
+                <label className="text-sm font-medium text-blue-900">
+                  Data Source:
+                </label>
+                <select
+                  value={selectedDataSource}
+                  onChange={(e) => handleDataSourceChange(e.target.value)}
+                  disabled={loading || isReloading}
+                  className="border border-blue-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {getPropertyFileOptions().map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="flex items-center space-x-2 text-sm text-blue-700">
+                {isReloading && (
+                  <div className="flex items-center space-x-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>Reloading...</span>
+                  </div>
+                )}
+                <span className="text-blue-600">
+                  {getCurrentDataSources().selectedPropertyConfig?.description}
+                </span>
+              </div>
+            </div>
+          </div>
+          
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Model Property Analyzer</h1>
@@ -341,7 +399,9 @@ const ModelDifferenceAnalyzer = () => {
                     Your model property dashboard is now ready with real data from your CSV files.
                   </p>
                   <div className="text-sm">
-                    <p>• Loaded {propertyData.length} properties from {dataSources.properties}</p>
+                    <p>• Loaded {propertyData.length} properties</p>
+                    <p>• Data source: <strong>{getCurrentDataSources().selectedPropertyConfig?.label}</strong></p>
+                    <p>• File: <code className="bg-green-100 px-1 rounded text-xs">{getCurrentDataSources().properties}</code></p>
                     <p>• All interactive charts and analysis tools are now available</p>
                     <p>• OpenAI semantic search is configured and ready</p>
                   </div>

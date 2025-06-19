@@ -111,27 +111,66 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
     const query = searchQuery.toLowerCase().trim();
     const queryTerms = query.split(/\s+/).filter(term => term.length > 2);
 
-    // Group by fine cluster and calculate relevance scores
-    const clusterGroups: Record<string, PropertyData[]> = {};
+    // NEW APPROACH: Calculate battle-based proportions
     
+    // Step 1: Deduplicate by (prompt, differences) to get unique conversations
+    const conversationMap = new Map<string, PropertyData>();
     data.forEach(item => {
-      const clusterName = item.property_description_fine_cluster_label;
-      if (!clusterName || clusterName === 'Unknown') return;
-      
-      if (!clusterGroups[clusterName]) {
-        clusterGroups[clusterName] = [];
+      const conversationKey = `${item.prompt}|||${item.differences}`;
+      if (!conversationMap.has(conversationKey)) {
+        conversationMap.set(conversationKey, item);
       }
-      clusterGroups[clusterName].push(item);
+    });
+    const uniqueConversations = Array.from(conversationMap.values());
+
+    // Step 2: For each model, calculate total battles participated in
+    const modelBattleCounts = new Map<string, number>();
+    uniqueConversations.forEach(conversation => {
+      // Each conversation involves exactly 2 models
+      if (conversation.model_1_name && conversation.model_1_name !== 'Unknown') {
+        modelBattleCounts.set(
+          conversation.model_1_name, 
+          (modelBattleCounts.get(conversation.model_1_name) || 0) + 1
+        );
+      }
+      if (conversation.model_2_name && conversation.model_2_name !== 'Unknown') {
+        modelBattleCounts.set(
+          conversation.model_2_name, 
+          (modelBattleCounts.get(conversation.model_2_name) || 0) + 1
+        );
+      }
     });
 
-    // Calculate relevance scores and filter clusters
+    // Step 3: Group conversations by fine cluster and calculate battle-based metrics
+    const clusterBattles = new Map<string, Map<string, Set<string>>>();
+    
+    uniqueConversations.forEach(conversation => {
+      const clusterName = conversation.property_description_fine_cluster_label;
+      if (!clusterName || clusterName === 'Unknown') return;
+      
+      if (!clusterBattles.has(clusterName)) {
+        clusterBattles.set(clusterName, new Map());
+      }
+      
+      const clusterMap = clusterBattles.get(clusterName)!;
+      const conversationKey = `${conversation.prompt}|||${conversation.differences}`;
+      
+      // CRITICAL FIX: Only count the model that actually exhibited the property
+      // The 'model' field tells us which model showed this behavior
+      const modelWithProperty = conversation.model;
+      if (modelWithProperty && modelWithProperty !== 'Unknown') {
+        if (!clusterMap.has(modelWithProperty)) {
+          clusterMap.set(modelWithProperty, new Set());
+        }
+        clusterMap.get(modelWithProperty)!.add(conversationKey);
+      }
+    });
+
+    // Step 4: Calculate relevance scores and create cluster matches
     const clusterMatches: ClusterMatch[] = [];
     
-    Object.entries(clusterGroups).forEach(([clusterName, items]) => {
-      // Shuffle items within each cluster
-      const shuffledItems = [...items].sort(() => Math.random() - 0.5);
-      
-      // Calculate relevance score
+    clusterBattles.forEach((modelBattles, clusterName) => {
+      // Calculate relevance score based on cluster name matching
       let relevanceScore = 0;
       
       // Check cluster name for exact matches (higher weight)
@@ -146,33 +185,44 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
         });
       });
       
-      // Check descriptions for matches (lower weight)
-      shuffledItems.forEach(item => {
-        const description = item.property_description.toLowerCase();
-        queryWords.forEach(queryWord => {
-          if (description.includes(queryWord)) {
-            relevanceScore += 0.5; // Lower score for description matches
-          }
-        });
+      // Only include clusters with minimum samples and relevance
+      const totalClusterBattles = new Set<string>();
+      modelBattles.forEach(battleSet => {
+        battleSet.forEach(battle => totalClusterBattles.add(battle));
       });
       
-      // Only include clusters with minimum samples and relevance
-      if (shuffledItems.length >= minSampleThreshold && relevanceScore > 0) {
-        // Count models in this cluster
-        const modelCounts: Record<string, number> = {};
-        shuffledItems.forEach(item => {
-          const model = item.model;
-          if (model && model !== 'Unknown') {
-            modelCounts[model] = (modelCounts[model] || 0) + 1;
+      if (totalClusterBattles.size >= minSampleThreshold && relevanceScore > 0) {
+        // Calculate model propensities for this cluster
+        const modelPropensities: Record<string, number> = {};
+        const matchingItems: PropertyData[] = [];
+        
+        modelBattles.forEach((battleSet, modelName) => {
+          const totalBattles = modelBattleCounts.get(modelName) || 0;
+          const battlesWithProperty = battleSet.size;
+          
+          if (totalBattles > 0) {
+            modelPropensities[modelName] = (battlesWithProperty / totalBattles) * 100;
+          } else {
+            modelPropensities[modelName] = 0;
+          }
+        });
+        
+        // Get a sample of matching items for display
+        const sampleBattles = Array.from(totalClusterBattles).slice(0, 10);
+        sampleBattles.forEach(battleKey => {
+          const [prompt, differences] = battleKey.split('|||');
+          const item = uniqueConversations.find(c => c.prompt === prompt && c.differences === differences);
+          if (item) {
+            matchingItems.push(item);
           }
         });
         
         clusterMatches.push({
           clusterName,
-          clusterDescription: shuffledItems[0]?.property_description || '',
-          totalItems: shuffledItems.length,
-          modelCounts,
-          matchingItems: shuffledItems,
+          clusterDescription: matchingItems[0]?.property_description || '',
+          totalItems: totalClusterBattles.size,
+          modelCounts: modelPropensities, // Now storing propensities instead of counts
+          matchingItems: matchingItems.sort(() => Math.random() - 0.5), // Shuffle
           relevanceScore
         });
       }
@@ -219,14 +269,14 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
     return Array.from(new Set(data.map(item => item.model).filter(model => model && model !== 'Unknown')));
   }, [data]);
 
-  const absoluteCountTooltip = "Shows absolute counts and percentages of property instances for each model within this cluster. Models with higher participation rates will naturally have higher counts.";
+  const absoluteCountTooltip = "Shows the propensity (percentage of battles) where each model exhibited properties from this cluster. Higher percentages indicate the model is more likely to show this type of behavior.";
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-gray-900">Keyword Search</h2>
         <p className="text-gray-600 mt-1">
-          Search for property clusters by keywords and see model distribution
+          Search for property clusters by keywords and see model propensities
         </p>
       </div>
 
@@ -259,7 +309,7 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
                 <label htmlFor="min-samples" className="text-sm text-gray-600">
-                  Min samples:
+                  Min battles:
                 </label>
                 <input
                   id="min-samples"
@@ -301,15 +351,15 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
           {searchResults.map((cluster, index) => {
             const isExpanded = expandedCards.has(cluster.clusterName);
             
-            // Calculate model distribution
+            // Calculate model distribution (now propensities)
             const modelDistribution: ModelDistribution[] = Object.entries(cluster.modelCounts)
-              .map(([modelName, count]) => ({
+              .map(([modelName, propensity]) => ({
                 modelName,
-                count,
-                percentage: (count / cluster.totalItems) * 100,
+                count: Math.round(propensity * 10) / 10, // Round to 1 decimal for display
+                percentage: propensity, // This is already a propensity percentage
                 colors: getModelColor(modelName)
               }))
-              .sort((a, b) => b.count - a.count);
+              .sort((a, b) => b.percentage - a.percentage);
 
             const topModels = modelDistribution.slice(0, 3);
             const remainingCount = modelDistribution.length - 3;
@@ -328,7 +378,7 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
                           Relevance: {cluster.relevanceScore.toFixed(1)}
                         </span>
                         <span className="text-xs text-gray-500">
-                          {cluster.totalItems} samples
+                          {cluster.totalItems} battles
                         </span>
                         <span className="text-xs text-gray-500">
                           {Object.keys(cluster.modelCounts).length} models
@@ -341,9 +391,9 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
                       
                       {/* Compact description preview */}
                       <p className="text-sm text-gray-600 mb-3">
-                        {cluster.clusterDescription.length > 120 
-                          ? cluster.clusterDescription.substring(0, 120) + '...' 
-                          : cluster.clusterDescription}
+                        {(cluster.clusterDescription || '').length > 120 
+                          ? (cluster.clusterDescription || '').substring(0, 120) + '...' 
+                          : cluster.clusterDescription || ''}
                       </p>
 
                       {/* Top 3 models - Horizontal layout */}
@@ -405,7 +455,7 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
                       <h5 className="text-sm font-medium text-gray-900 mb-2">Full Description</h5>
                       <div className="bg-white rounded p-3 border-l-4 border-blue-400">
                         <p className="text-sm text-gray-700 leading-relaxed">
-                          {cluster.clusterDescription}
+                          {cluster.clusterDescription || ''}
                         </p>
                       </div>
                     </div>
@@ -442,7 +492,7 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
                               ></div>
                             </div>
                             <div className="text-xs text-gray-600 w-16 text-right">
-                              {modelDist.count} ({modelDist.percentage.toFixed(1)}%)
+                              {modelDist.percentage.toFixed(1)}% propensity
                             </div>
                           </div>
                         ))}
@@ -463,7 +513,7 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
             <Search className="h-8 w-8 mx-auto mb-3 opacity-50" />
             <p className="text-lg font-medium">No matching clusters found</p>
             <p className="text-sm mt-1">
-              Try different keywords or lower the minimum sample threshold.
+              Try different keywords or lower the minimum battle threshold.
             </p>
           </div>
         </div>

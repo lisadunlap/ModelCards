@@ -1,15 +1,12 @@
 /**
- * Optimized Data Loading Service
+ * Data Loading Service
  * 
  * Handles efficient loading of large datasets with support for:
- * - Split table/detail data
  * - Compressed file formats
- * - Lazy loading
  * - Browser caching
- * - Pagination
  */
 
-import { getCurrentDataSources, getLoadingStrategy, isOptimizedDataAvailable, DATA_CONFIG } from '../config/dataSources';
+import { getCurrentDataSources, getLoadingStrategy, DATA_CONFIG } from '../config/dataSources';
 
 export interface PropertyData {
   prompt: string;
@@ -35,17 +32,6 @@ export interface PropertyData {
   row_id?: number; // For linking table and detail data
 }
 
-export interface DataIndex {
-  total_rows: number;
-  table_rows: number;
-  detail_rows: number;
-  available_columns: {
-    table: string[];
-    detail: string[];
-  };
-  row_id_mapping?: number[];
-}
-
 export interface LoadingProgress {
   status: string;
   progress: number; // 0-100
@@ -56,8 +42,6 @@ export interface LoadingProgress {
 class DataLoaderService {
   private tableData: PropertyData[] = [];
   private detailDataCache = new Map<number, PropertyData>();
-  private fullDetailData: PropertyData[] | null = null; // Cache full detail dataset
-  private dataIndex: DataIndex | null = null;
   private loadingStrategy = getLoadingStrategy();
   
   // Cache management
@@ -86,14 +70,8 @@ class DataLoaderService {
         }
       }
       
-      // Check if optimized data is available
-      const useOptimized = this.loadingStrategy.useOptimizedData && await isOptimizedDataAvailable();
-      
-      if (useOptimized) {
-        return await this.loadOptimizedTableData(onProgress);
-      } else {
-        return await this.loadFullDataset(onProgress);
-      }
+      // Load the main dataset
+      return await this.loadFullDataset(onProgress);
       
     } catch (error) {
       console.error('Error loading table data:', error);
@@ -101,153 +79,14 @@ class DataLoaderService {
     }
   }
   
-  private async loadOptimizedTableData(onProgress?: (progress: LoadingProgress) => void): Promise<PropertyData[]> {
-    const sources = getCurrentDataSources();
-    
-    console.log('📁 Loading from source:', sources.tableData);
-    console.log('📁 Is compressed file?', sources.tableData.endsWith('.gz'));
-    
-    onProgress?.({
-      status: 'Loading optimized table data...',
-      progress: 10,
-      loaded: 0,
-      total: 0
-    });
-    
-    // Load data index first
-    try {
-      const indexResponse = await fetch(sources.dataIndex);
-      if (indexResponse.ok) {
-        this.dataIndex = await indexResponse.json();
-        console.log('📊 Loaded data index:', this.dataIndex);
-      }
-    } catch (error) {
-      console.warn('Could not load data index:', error);
-    }
-    
-    onProgress?.({
-      status: 'Fetching table data...',
-      progress: 20,
-      loaded: 0,
-      total: this.dataIndex?.table_rows || 0
-    });
-    
-    // Load table data with automatic decompression request
-    const tableResponse = await fetch(sources.tableData, {
-      headers: {
-        'Accept-Encoding': 'gzip, deflate',
-        'Accept': 'text/csv, text/plain, */*'
-      }
-    });
-    if (!tableResponse.ok) {
-      console.warn(`Optimized table data not found (${sources.tableData}), falling back to full dataset`);
-      // Try the original compressed file as fallback
-      console.log('🔄 Attempting fallback to original compressed file...');
-      return await this.loadFullDataset(onProgress);
-    }
-    
-    console.log('📁 Response headers:', Object.fromEntries(tableResponse.headers.entries()));
-    console.log('📁 Response size:', tableResponse.headers.get('content-length'), 'bytes');
-    console.log('📁 Content-Encoding:', tableResponse.headers.get('content-encoding'));
-    
-    onProgress?.({
-      status: 'Reading table data...',
-      progress: 40,
-      loaded: 0,
-      total: this.dataIndex?.table_rows || 0
-    });
-    
-    // Handle compressed data
-    let csvContent: string;
-    const contentEncoding = tableResponse.headers.get('content-encoding');
-    
-    if (contentEncoding === 'gzip' || (!contentEncoding && sources.tableData.endsWith('.gz'))) {
-      // Try automatic decompression first
-      try {
-        csvContent = await tableResponse.text();
-        console.log('✅ Automatic decompression worked, size:', csvContent.length, 'characters');
-      } catch (error) {
-        console.log('🗜️ Automatic decompression failed, trying manual...');
-        onProgress?.({
-          status: 'Decompressing data...',
-          progress: 50,
-          loaded: 0,
-          total: this.dataIndex?.table_rows || 0
-        });
-        
-        const buffer = await tableResponse.arrayBuffer();
-        console.log('📁 Compressed buffer size:', buffer.byteLength, 'bytes');
-        csvContent = await this.decompressGzip(buffer);
-        console.log('📁 Manually decompressed size:', csvContent.length, 'characters');
-      }
-    } else {
-      csvContent = await tableResponse.text();
-      console.log('📁 Text size:', csvContent.length, 'characters');
-    }
-    
-    onProgress?.({
-      status: 'Parsing table data...',
-      progress: 60,
-      loaded: 0,
-      total: this.dataIndex?.table_rows || 0
-    });
-    
-    // Parse CSV
-    const Papa = (await import('papaparse')).default;
-    const parsedData = Papa.parse(csvContent, {
-      header: true,
-      dynamicTyping: DATA_CONFIG.ENABLE_DYNAMIC_TYPING,
-      skipEmptyLines: DATA_CONFIG.SKIP_EMPTY_LINES,
-    });
-    
-    onProgress?.({
-      status: 'Processing table data...',
-      progress: 80,
-      loaded: 0,
-      total: parsedData.data.length
-    });
-    
-    // Process and filter data
-    const processedData = (parsedData.data as any[])
-      .filter(row => row && row.property_description)
-      .map((row, index) => {
-        // Always assign a unique row_id based on the index
-        row.row_id = index + 1;
-        return this.normalizePropertyData(row);
-      });
-    
-    onProgress?.({
-      status: 'Caching data...',
-      progress: 90,
-      loaded: processedData.length,
-      total: processedData.length
-    });
-    
-    // Cache the processed data
-    if (this.loadingStrategy.enableBrowserCache) {
-      this.setCachedData(processedData);
-    }
-    
-    onProgress?.({
-      status: 'Complete!',
-      progress: 100,
-      loaded: processedData.length,
-      total: processedData.length
-    });
-    
-    this.tableData = processedData;
-    return processedData;
-  }
-  
   private async loadFullDataset(onProgress?: (progress: LoadingProgress) => void): Promise<PropertyData[]> {
-    // Fallback to original loading method
     const sources = getCurrentDataSources();
     
-    console.log('📁 Loading full dataset from:', sources.properties);
+    console.log('📁 Loading dataset from:', sources.properties);
     console.log('📁 Is compressed?', sources.properties.endsWith('.gz'));
     
     onProgress?.({
-      status: 'Loading full dataset...',
+      status: 'Loading dataset...',
       progress: 10,
       loaded: 0,
       total: 0
@@ -315,7 +154,7 @@ class DataLoaderService {
     const Papa = (await import('papaparse')).default;
     
     onProgress?.({
-      status: 'Parsing full dataset...',
+      status: 'Parsing dataset...',
       progress: 70,
       loaded: 0,
       total: 0
@@ -327,7 +166,7 @@ class DataLoaderService {
       skipEmptyLines: DATA_CONFIG.SKIP_EMPTY_LINES,
     });
     
-    console.log('📈 Full dataset parsed. Total rows:', parsedData.data?.length || 0);
+    console.log('📈 Dataset parsed. Total rows:', parsedData.data?.length || 0);
     console.log('📈 Sample columns:', Object.keys(parsedData.data?.[0] || {}));
     console.log('📈 First row sample:', parsedData.data?.[0]);
     console.log('📈 Parse errors:', parsedData.errors?.length || 0);
@@ -346,6 +185,11 @@ class DataLoaderService {
       return this.normalizePropertyData(row);
     });
     console.log('📈 Rows after normalization:', processedData.length);
+    
+    // Cache the processed data
+    if (this.loadingStrategy.enableBrowserCache) {
+      this.setCachedData(processedData);
+    }
     
     onProgress?.({
       status: 'Complete!',
@@ -369,86 +213,20 @@ class DataLoaderService {
       return this.detailDataCache.get(rowId) || null;
     }
     
-    // If not using lazy loading, detail data should already be in table data
-    if (!this.loadingStrategy.lazyLoadDetails) {
-      console.log('📋 Not using lazy loading, looking in table data');
-      const item = this.tableData.find(item => item.row_id === rowId);
-      if (item) {
-        console.log('✅ Found item in tableData:', {
-          row_id: item.row_id,
-          model: item.model,
-          property_desc: item.property_description?.substring(0, 50) + '...'
-        });
-        this.detailDataCache.set(rowId, item);
-        return item;
-      } else {
-        console.warn('❌ No item found in tableData for rowId:', rowId);
-      }
-    }
-    
-    // Load detail data if not already loaded
-    if (!this.fullDetailData) {
-      console.log('📋 Loading full detail dataset...');
-      await this.loadFullDetailDataset();
-    }
-    
-    // Find the specific row in the full detail data
-    if (this.fullDetailData) {
-      console.log('📋 Searching in full detail data for rowId:', rowId);
-      const targetRow = this.fullDetailData.find(row => row.row_id === rowId);
-      if (targetRow) {
-        console.log('✅ Found detail data for rowId:', rowId);
-        this.detailDataCache.set(rowId, targetRow);
-        return targetRow;
-      } else {
-        console.warn('❌ No detail data found for rowId:', rowId);
-      }
-    }
-    
-    console.warn('📋 Falling back to table data');
-    return this.tableData.find(item => item.row_id === rowId) || null;
-  }
-  
-  private async loadFullDetailDataset(): Promise<void> {
-    try {
-      const sources = getCurrentDataSources();
-      console.log('📋 Loading detail data from:', sources.detailData);
-      
-      const response = await fetch(sources.detailData, {
-        headers: {
-          'Accept': 'text/csv, text/plain, */*'
-        }
+    // Look in table data (since we load everything in one file now)
+    console.log('📋 Looking in table data');
+    const item = this.tableData.find(item => item.row_id === rowId);
+    if (item) {
+      console.log('✅ Found item in tableData:', {
+        row_id: item.row_id,
+        model: item.model,
+        property_desc: item.property_description?.substring(0, 50) + '...'
       });
-      if (!response.ok) {
-        console.warn('Detail data not available');
-        return;
-      }
-      
-      console.log('📋 Detail data response size:', response.headers.get('content-length'), 'bytes');
-      
-      const csvContent = await response.text();
-      console.log('📋 Detail CSV content size:', csvContent.length, 'characters');
-      
-      const Papa = (await import('papaparse')).default;
-      const parsedData = Papa.parse(csvContent, {
-        header: true,
-        dynamicTyping: DATA_CONFIG.ENABLE_DYNAMIC_TYPING,
-        skipEmptyLines: DATA_CONFIG.SKIP_EMPTY_LINES,
-      });
-      
-      // Process and store the full detail dataset
-      this.fullDetailData = (parsedData.data as any[])
-        .filter(row => row && row.property_description)
-        .map((row, index) => {
-          // Always assign a unique row_id based on the index
-          row.row_id = index + 1;
-          return this.normalizePropertyData(row);
-        });
-      
-      console.log('✅ Loaded full detail dataset:', this.fullDetailData.length, 'rows');
-      
-    } catch (error) {
-      console.error('Error loading full detail dataset:', error);
+      this.detailDataCache.set(rowId, item);
+      return item;
+    } else {
+      console.warn('❌ No item found in tableData for rowId:', rowId);
+      return null;
     }
   }
   
@@ -552,13 +330,12 @@ class DataLoaderService {
   }
   
   clearCache(): void {
-    localStorage.removeItem(this.cacheKey);
-    localStorage.removeItem(this.cacheTimestamp);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(this.cacheKey);
+      localStorage.removeItem(this.cacheTimestamp);
+    }
+    this.tableData = [];
     this.detailDataCache.clear();
-  }
-  
-  getDataIndex(): DataIndex | null {
-    return this.dataIndex;
   }
   
   getLoadingStrategy() {

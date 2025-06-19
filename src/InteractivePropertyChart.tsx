@@ -187,86 +187,120 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       console.log('⚔️ After battle model filter:', filteredData.length, 'selectedModels:', selectedModels);
     }
 
-    // Group data based on current level and split by model
-    let groupedData: Record<string, Record<string, number> & { total: number }> = {};
+    // NEW APPROACH: Calculate battle-based proportions
     
-    // When battle filtering is enabled, don't apply the regular model filter in the grouping logic
-    const useBattleFiltering = filterBattleModels && viewMode === 'selected-models' && selectedModels.length > 0;
-    
-    switch (drillState.level) {
-      case 'coarse':
-        filteredData.forEach(item => {
-          const key = item.property_description_coarse_cluster_label;
-          if (!key || key === 'Unknown' || key === '') {
-            console.warn('⚠️ Skipping item with empty/unknown coarse cluster:', item);
-            return;
-          }
-          if (!groupedData[key]) {
-            groupedData[key] = { total: 0 };
-            activeModels.forEach(model => {
-              groupedData[key][model] = 0;
-            });
-          }
-          if (useBattleFiltering || activeModels.includes(item.model)) {
-            groupedData[key][item.model] = (groupedData[key][item.model] || 0) + 1;
-            groupedData[key].total += 1;
-          }
-        });
-        break;
-      case 'fine':
-        filteredData.forEach(item => {
-          const key = item.property_description_fine_cluster_label;
-          if (!key || key === 'Unknown' || key === '') {
-            console.warn('⚠️ Skipping item with empty/unknown fine cluster:', item);
-            return;
-          }
-          if (!groupedData[key]) {
-            groupedData[key] = { total: 0 };
-            activeModels.forEach(model => {
-              groupedData[key][model] = 0;
-            });
-          }
-          if (useBattleFiltering || activeModels.includes(item.model)) {
-            groupedData[key][item.model] = (groupedData[key][item.model] || 0) + 1;
-            groupedData[key].total += 1;
-          }
-        });
-        break;
-      case 'property':
-        filteredData.forEach(item => {
-          const key = item.property_description;
-          if (!key || key === '') {
-            console.warn('⚠️ Skipping item with empty property description:', item);
-            return;
-          }
-          if (!groupedData[key]) {
-            groupedData[key] = { total: 0 };
-            activeModels.forEach(model => {
-              groupedData[key][model] = 0;
-            });
-          }
-          if (useBattleFiltering || activeModels.includes(item.model)) {
-            groupedData[key][item.model] = (groupedData[key][item.model] || 0) + 1;
-            groupedData[key].total += 1;
-          }
-        });
-        break;
-    }
+    // Step 1: Deduplicate by (prompt, differences) to get unique conversations
+    const conversationMap = new Map<string, PropertyData>();
+    filteredData.forEach(item => {
+      const conversationKey = `${item.prompt}|||${item.differences}`;
+      if (!conversationMap.has(conversationKey)) {
+        conversationMap.set(conversationKey, item);
+      }
+    });
+    const uniqueConversations = Array.from(conversationMap.values());
+    console.log('📊 Unique conversations after deduplication:', uniqueConversations.length);
 
-    // Convert to chart data format
-    let chartEntries = Object.entries(groupedData)
-      .map(([name, counts]) => {
-        const result: any = { name, total_count: counts.total };
+    // Step 2: For each model, calculate total battles participated in
+    const modelBattleCounts = new Map<string, number>();
+    uniqueConversations.forEach(conversation => {
+      // Each conversation involves exactly 2 models
+      if (conversation.model_1_name && conversation.model_1_name !== 'Unknown') {
+        modelBattleCounts.set(
+          conversation.model_1_name, 
+          (modelBattleCounts.get(conversation.model_1_name) || 0) + 1
+        );
+      }
+      if (conversation.model_2_name && conversation.model_2_name !== 'Unknown') {
+        modelBattleCounts.set(
+          conversation.model_2_name, 
+          (modelBattleCounts.get(conversation.model_2_name) || 0) + 1
+        );
+      }
+    });
+    console.log('📊 Model battle counts:', Array.from(modelBattleCounts.entries()).slice(0, 5));
+
+    // Step 3: Group conversations by cluster/property and calculate proportions
+    const clusterBattles = new Map<string, Map<string, Set<string>>>();
+    
+    uniqueConversations.forEach(conversation => {
+      // Determine cluster key based on drill level
+      let clusterKey = '';
+      switch (drillState.level) {
+        case 'coarse':
+          clusterKey = conversation.property_description_coarse_cluster_label;
+          break;
+        case 'fine':
+          clusterKey = conversation.property_description_fine_cluster_label;
+          break;
+        case 'property':
+          clusterKey = conversation.property_description;
+          break;
+      }
+      
+      if (!clusterKey || clusterKey === 'Unknown' || clusterKey === '') return;
+
+      // Initialize cluster tracking
+      if (!clusterBattles.has(clusterKey)) {
+        clusterBattles.set(clusterKey, new Map());
+      }
+      
+      const clusterMap = clusterBattles.get(clusterKey)!;
+      const conversationKey = `${conversation.prompt}|||${conversation.differences}`;
+      
+      // For each battle, track which models participated
+      const modelWithProperty = conversation.model;
+      if (modelWithProperty && modelWithProperty !== 'Unknown') {
+        // Skip if model is not in active models list (when not battle filtering)
+        const useBattleFiltering = filterBattleModels && viewMode === 'selected-models' && selectedModels.length > 0;
+        if (!useBattleFiltering && viewMode !== 'heatmap' && !activeModels.includes(modelWithProperty)) {
+          return;
+        }
         
-        activeModels.forEach(model => {
-          result[`${model}_percentage`] = counts.total > 0 ? Math.round((counts[model] / counts.total) * 100) : 0;
-          result[`${model}_count`] = counts[model] || 0;
-        });
+        if (!clusterMap.has(modelWithProperty)) {
+          clusterMap.set(modelWithProperty, new Set());
+        }
+        clusterMap.get(modelWithProperty)!.add(conversationKey);
+      }
+    });
+
+    // Step 4: Calculate proportions for chart data
+    let chartEntries: any[] = [];
+    
+    clusterBattles.forEach((modelBattles, clusterName) => {
+      const entry: any = { 
+        name: clusterName, 
+        total_battles: 0,
+        battle_counts: new Map<string, number>()
+      };
+      
+      // Calculate proportions for each model
+      modelBattles.forEach((battleSet, modelName) => {
+        const battlesWithProperty = battleSet.size;
+        const totalBattles = modelBattleCounts.get(modelName) || 0;
         
-        return result;
+        if (totalBattles > 0) {
+          const proportion = (battlesWithProperty / totalBattles) * 100; // Convert to percentage
+          entry[`${modelName}_percentage`] = Math.round(proportion * 10) / 10; // Round to 1 decimal
+          entry[`${modelName}_battle_count`] = battlesWithProperty;
+          entry[`${modelName}_total_battles`] = totalBattles;
+          entry.battle_counts.set(modelName, battlesWithProperty);
+        } else {
+          entry[`${modelName}_percentage`] = 0;
+          entry[`${modelName}_battle_count`] = 0;
+          entry[`${modelName}_total_battles`] = 0;
+        }
       });
+      
+      // Calculate total unique battles for this cluster (across all models)
+      const allBattles = new Set<string>();
+      modelBattles.forEach(battleSet => {
+        battleSet.forEach(battle => allBattles.add(battle));
+      });
+      entry.total_battles = allBattles.size;
+      
+      chartEntries.push(entry);
+    });
 
-    console.log('📈 Grouped Data Keys:', Object.keys(groupedData));
     console.log('📈 Chart Entries Count:', chartEntries.length);
 
     // Store total before filtering for comparison
@@ -276,7 +310,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     if (showDiscrepancyOnly && activeModels.length >= 2) {
       chartEntries = chartEntries.filter(entry => {
         // Get all model counts for this category
-        const modelCounts = activeModels.map(model => entry[`${model}_count`] || 0);
+        const modelCounts = activeModels.map(model => entry[`${model}_battle_count`] || 0);
         
         // Remove zero counts for ratio calculation
         const nonZeroCounts = modelCounts.filter(count => count > 0);
@@ -303,7 +337,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       console.log(`Discrepancy filter: ${totalBeforeFilter} -> ${chartEntries.length} categories (threshold: ${discrepancyThreshold})`);
     }
 
-    const finalData = chartEntries.sort((a, b) => b.total_count - a.total_count);
+    const finalData = chartEntries.sort((a, b) => b.total_battles - a.total_battles);
     console.log('📊 Final Chart Data:', finalData.length, 'items');
     
     // If we have no data, log a warning
@@ -695,11 +729,11 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
           <p className="font-medium text-sm mb-2">{label}</p>
           {activeModels.map((model, index) => (
             <p key={model} className="text-sm" style={{ color: modelColors[index] }}>
-              {model}: {data[`${model}_count`]} items ({data[`${model}_percentage`]}%)
+              {model}: {data[`${model}_battle_count`]} battles
             </p>
           ))}
           <p className="text-sm text-gray-600 mt-1 pt-1 border-t">
-            Total: {data.total_count} items
+            Total: {data.total_battles} battles
           </p>
         </div>
       );
@@ -749,6 +783,28 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       throw new Error(`Failed to embed query: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
+
+  // Calculate dynamic Y-axis range based on actual data
+  const yAxisDomain = useMemo(() => {
+    if (chartData.length === 0) return [0, 100];
+    
+    let maxValue = 0;
+    chartData.forEach(entry => {
+      activeModels.forEach(model => {
+        const value = entry[`${model}_percentage`] || 0;
+        if (value > maxValue) {
+          maxValue = value;
+        }
+      });
+    });
+    
+    // Add 20% padding above the maximum value, with a minimum of 10%
+    const paddedMax = Math.max(maxValue * 1.2, 10);
+    // Round up to the nearest 5 for cleaner axis labels
+    const roundedMax = Math.ceil(paddedMax / 5) * 5;
+    
+    return [0, roundedMax];
+  }, [chartData, activeModels]);
 
   return (
     <div className="space-y-6">
@@ -1039,6 +1095,11 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
             </div>
           </div>
           
+          <div className="mb-4 text-sm text-blue-700 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
+            <strong>Propensity calculation:</strong> Each bar shows what percentage of a model's total battles resulted in that behavioral pattern. 
+            For example, 5% propensity means the model exhibited this behavior in 5 out of every 100 battles it participated in.
+          </div>
+          
           {chartData.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-gray-500">
@@ -1081,7 +1142,8 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                   tick={{ fontSize: 12 }}
                 />
                 <YAxis 
-                  label={{ value: 'Count', angle: -90, position: 'insideLeft' }} 
+                  label={{ value: 'Propensity (%)', angle: -90, position: 'insideLeft' }} 
+                  domain={yAxisDomain}
                 />
                 <Tooltip 
                   content={<CustomTooltip />} 
@@ -1100,7 +1162,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
                 {activeModels.map((model, index) => (
                   <Bar 
                     key={model}
-                    dataKey={`${model}_count`}
+                    dataKey={`${model}_percentage`}
                     name={model}
                     fill={modelColors[index]} 
                     cursor={canDrillDown ? "pointer" : "default"}

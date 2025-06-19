@@ -37,6 +37,7 @@ interface ClusterSummary {
   modelItems: number;
   proportion: number;
   percentage: number;
+  distinctiveness?: number;
 }
 
 interface ModelSummary {
@@ -141,74 +142,137 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data }) => {
       );
     }
 
-    // Get unique models from filtered data
-    const uniqueModels = Array.from(new Set(filteredData.map(item => item.model)))
-      .filter(model => {
-        // Filter out invalid model names
-        if (!model || typeof model !== 'string') return false;
-        
-        // Remove obviously invalid model names
-        const invalidNames = ['numm count', 'null', 'undefined', '', 'NaN'];
-        if (invalidNames.includes(model.toLowerCase().trim())) {
-          return false;
-        }
-        
-        // Remove very short names that are likely errors
-        if (model.trim().length < 2) {
-          return false;
-        }
-        
-        // Only include models that are in the selected list
-        return selectedModels.includes(model);
-      });
+    // NEW APPROACH: Calculate battle-based proportions
+    
+    // Step 1: Deduplicate by (prompt, differences) to get unique conversations
+    const conversationMap = new Map<string, PropertyData>();
+    filteredData.forEach(item => {
+      const conversationKey = `${item.prompt}|||${item.differences}`;
+      if (!conversationMap.has(conversationKey)) {
+        conversationMap.set(conversationKey, item);
+      }
+    });
+    const uniqueConversations = Array.from(conversationMap.values());
 
-    // For each model, calculate top clusters using filtered data
-    const summaries: ModelSummary[] = uniqueModels.map(modelName => {
-      const modelData = filteredData.filter(item => item.model === modelName);
+    // Step 2: For each model, calculate total battles participated in
+    const modelBattleCounts = new Map<string, number>();
+    uniqueConversations.forEach(conversation => {
+      // Each conversation involves exactly 2 models
+      if (conversation.model_1_name && conversation.model_1_name !== 'Unknown') {
+        modelBattleCounts.set(
+          conversation.model_1_name, 
+          (modelBattleCounts.get(conversation.model_1_name) || 0) + 1
+        );
+      }
+      if (conversation.model_2_name && conversation.model_2_name !== 'Unknown') {
+        modelBattleCounts.set(
+          conversation.model_2_name, 
+          (modelBattleCounts.get(conversation.model_2_name) || 0) + 1
+        );
+      }
+    });
+
+    // Step 3: Group conversations by fine cluster and calculate model-specific battle counts
+    const clusterBattles = new Map<string, Map<string, Set<string>>>();
+    
+    uniqueConversations.forEach(conversation => {
+      const clusterKey = conversation.property_description_fine_cluster_label;
+      if (!clusterKey || clusterKey === 'Unknown' || clusterKey === '') return;
+
+      // Initialize cluster tracking
+      if (!clusterBattles.has(clusterKey)) {
+        clusterBattles.set(clusterKey, new Map());
+      }
       
-      // Group by fine cluster
-      const clusterCounts: Record<string, { modelItems: number; totalItems: number }> = {};
+      const clusterMap = clusterBattles.get(clusterKey)!;
+      const conversationKey = `${conversation.prompt}|||${conversation.differences}`;
       
-      // First pass: count model items in each cluster
-      modelData.forEach(item => {
-        const cluster = item.property_description_fine_cluster_label;
-        if (!cluster || cluster === 'Unknown' || cluster === '') return;
+      // For each battle, track which models participated
+      const modelWithProperty = conversation.model;
+      if (modelWithProperty && modelWithProperty !== 'Unknown') {
+        // Only include models that are in the selected list
+        if (!selectedModels.includes(modelWithProperty)) return;
         
-        if (!clusterCounts[cluster]) {
-          clusterCounts[cluster] = { modelItems: 0, totalItems: 0 };
+        if (!clusterMap.has(modelWithProperty)) {
+          clusterMap.set(modelWithProperty, new Set());
         }
-        clusterCounts[cluster].modelItems += 1;
+        clusterMap.get(modelWithProperty)!.add(conversationKey);
+      }
+    });
+
+    // Step 4: Calculate propensities and find distinctive clusters for each model
+    const summaries: ModelSummary[] = selectedModels.map(modelName => {
+      const totalBattles = modelBattleCounts.get(modelName) || 0;
+      
+      // Calculate propensities for each cluster
+      const clusterSummaries: ClusterSummary[] = [];
+      
+      clusterBattles.forEach((modelBattles, clusterName) => {
+        const battlesWithProperty = modelBattles.get(modelName)?.size || 0;
+        
+        if (totalBattles > 0 && battlesWithProperty > 0) {
+          const propensity = battlesWithProperty / totalBattles;
+          
+          // Calculate average propensity across all other models for this cluster
+          let otherModelsPropensities: number[] = [];
+          modelBattles.forEach((battleSet, otherModelName) => {
+            if (otherModelName !== modelName) {
+              const otherTotalBattles = modelBattleCounts.get(otherModelName) || 0;
+              const otherBattlesWithProperty = battleSet.size;
+              if (otherTotalBattles > 0) {
+                otherModelsPropensities.push(otherBattlesWithProperty / otherTotalBattles);
+              }
+            }
+          });
+          
+          // Only include clusters where this model has meaningful participation
+          // and meets the minimum threshold
+          const totalClusterBattles = new Set<string>();
+          modelBattles.forEach(battleSet => {
+            battleSet.forEach(battle => totalClusterBattles.add(battle));
+          });
+          
+          if (totalClusterBattles.size >= minItemsThreshold && otherModelsPropensities.length > 0) {
+            const avgOthersPropensity = otherModelsPropensities.reduce((a, b) => a + b, 0) / otherModelsPropensities.length;
+            const distinctiveness = avgOthersPropensity > 0 ? propensity / avgOthersPropensity : propensity * 10;
+            
+            // Only include clusters where this model is significantly more distinctive
+            // (at least 1.5x higher propensity than average of others, or absolute propensity > 2%)
+            if (distinctiveness >= 1.5 || propensity >= 0.02) {
+              clusterSummaries.push({
+                clusterName,
+                totalItems: totalClusterBattles.size, // Total unique battles in this cluster
+                modelItems: battlesWithProperty, // Battles where this model exhibited the property
+                proportion: propensity,
+                percentage: propensity * 100,
+                distinctiveness // Add distinctiveness score for sorting
+              });
+            }
+          }
+        }
       });
       
-      // Second pass: count total items in each cluster (across all models in filtered data)
-      filteredData.forEach(item => {
-        const cluster = item.property_description_fine_cluster_label;
-        if (!cluster || cluster === 'Unknown' || cluster === '') return;
-        
-        if (clusterCounts[cluster]) {
-          clusterCounts[cluster].totalItems += 1;
-        }
-      });
-      
-      // Calculate proportions, filter by minimum items threshold, and get top 10
-      const clusterSummaries: ClusterSummary[] = Object.entries(clusterCounts)
-        .filter(([_, counts]) => counts.totalItems >= minItemsThreshold)
-        .map(([clusterName, counts]) => ({
-          clusterName,
-          totalItems: counts.totalItems,
-          modelItems: counts.modelItems,
-          proportion: counts.totalItems > 0 ? counts.modelItems / counts.totalItems : 0,
-          percentage: counts.totalItems > 0 ? (counts.modelItems / counts.totalItems) * 100 : 0
-        }))
-        .sort((a, b) => b.proportion - a.proportion)
+      // Sort by distinctiveness first, then by propensity, and take top 10
+      const topClusters = clusterSummaries
+        .sort((a, b) => {
+          // Sort by distinctiveness score first, then by propensity
+          const distinctivenessDiff = (b.distinctiveness || 0) - (a.distinctiveness || 0);
+          if (Math.abs(distinctivenessDiff) > 0.1) { // If distinctiveness difference is significant
+            return distinctivenessDiff;
+          }
+          return b.proportion - a.proportion; // Fall back to propensity
+        })
         .slice(0, 10);
-      
+
       return {
         modelName,
-        totalItems: modelData.length,
-        topClusters: clusterSummaries,
+        totalItems: totalBattles, // Total battles this model participated in
+        topClusters,
         colors: getModelColor(modelName)
       };
+    }).filter(summary => {
+      // Filter out models with insufficient data
+      return summary.totalItems >= 10 && summary.topClusters.length > 0;
     });
 
     return summaries.sort((a, b) => b.totalItems - a.totalItems);
@@ -230,7 +294,7 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data }) => {
     );
   }
 
-  const proportionTooltip = "Shows what percentage of each cluster's total property instances come from this model. Models with higher participation rates in certain property types will have higher proportions.";
+  const proportionTooltip = "Shows distinctive clusters where each model has significantly higher propensity than other models (at least 1.5x higher). This highlights what makes each model behaviorally unique.";
 
   return (
     <div className="space-y-6">
@@ -241,8 +305,12 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data }) => {
             <InfoTooltip content={proportionTooltip} />
           </div>
           <p className="text-gray-600 mt-1">
-            Top 10 fine-grained clusters by proportion for each model
+            Top 10 distinctive clusters where each model shows unique behavioral patterns
           </p>
+          <div className="mt-2 text-sm text-blue-700 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
+            <strong>Propensity calculation:</strong> For each cluster, propensity shows what percentage of a model's total battles resulted in that behavioral pattern. 
+            For example, 5% propensity means the model exhibited this behavior in 5 out of every 100 battles it participated in.
+          </div>
         </div>
         <div className="text-sm text-gray-600">
           {modelSummaries.length} models analyzed
@@ -384,14 +452,14 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data }) => {
                     {summary.modelName}
                   </div>
                   <div className="text-sm text-gray-600">
-                    {summary.totalItems.toLocaleString()} properties
+                    {summary.totalItems.toLocaleString()} battles
                   </div>
                 </div>
               </div>
               
               <div className="flex items-center text-sm text-gray-500">
                 <TrendingUp className="h-4 w-4 mr-2 text-gray-400" />
-                <span>Top clusters by proportion</span>
+                <span>Top clusters by propensity</span>
               </div>
             </div>
 
@@ -405,25 +473,26 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data }) => {
                 <div className="space-y-3">
                   {summary.topClusters.map((cluster, clusterIndex) => (
                     <div key={cluster.clusterName} className="p-3 bg-gray-50 rounded-lg border border-gray-100 hover:bg-gray-100 transition-colors">
-                      <div className="mb-1.5">
-                        <h4 className="text-sm font-medium text-gray-900 leading-relaxed mb-2">
+                      <div className="mb-2">
+                        <h4 className="text-base font-semibold text-gray-900 leading-relaxed mb-1">
                           {cluster.clusterName}
                         </h4>
-                        
-                        {/* Progress bar */}
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="h-2 rounded-full transition-all duration-500 ease-out"
-                            style={{ 
-                              width: `${Math.min(cluster.percentage, 100)}%`,
-                              backgroundColor: summary.colors.chartColor
-                            }}
-                          ></div>
-                        </div>
                       </div>
                       
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <span>{cluster.modelItems}/{cluster.totalItems} items ({(cluster.proportion * 100).toFixed(1)}%)</span>
+                      <div className="text-xs text-gray-600 space-y-1">
+                        <div>
+                          <span className="font-medium text-gray-700">
+                            {cluster.percentage.toFixed(1)}% propensity
+                          </span>
+                          <span className="ml-2 text-gray-500">
+                            ({cluster.modelItems} out of {cluster.totalItems} battles)
+                          </span>
+                        </div>
+                        {cluster.distinctiveness && cluster.distinctiveness > 1 && (
+                          <div className="text-green-600 font-medium">
+                            {cluster.distinctiveness.toFixed(1)}x more distinctive than other models
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
