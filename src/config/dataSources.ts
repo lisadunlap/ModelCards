@@ -7,7 +7,7 @@
 
 export const DATA_SOURCES = {
   // Main CSV files for model properties - Multiple options
-  PROPERTIES_CSV: './all_one_sided_comparisons_clustered_4_stripped.csv',
+  PROPERTIES_CSV: './wildbench_comparisons_sample_hdbscan_clustered.csv.gz',
   
   // Available property file options
   PROPERTY_FILES: {
@@ -16,11 +16,16 @@ export const DATA_SOURCES = {
       label: '500 Arena Prompts on many models',
       description: 'Running a ton of models on 500 different arena prompt (not real arena battles)'
     },
-    ARENA_COMPARISON: {
-      path: './arena_model_comparison_differences_with_model-small_hdbscan_clustered.csv.gz',
-      label: 'Actual Arena Battles',
-      description: 'Chatbot Arena model comparison with HDBSCAN clustering'
-    }
+    // ARENA_COMPARISON: {
+    //   path: './arena_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
+    //   label: 'Actual Arena Battles',
+    //   description: 'Chatbot Arena model comparison with HDBSCAN clustering'
+    // },
+    // WILDBENCH_COMPARISON: {
+    //   path: './wildbench_comparisons_sample_hdbscan_clustered.csv.gz',
+    //   label: 'Wildbench Model Comparison',
+    //   description: 'Wildbench model comparison with HDBSCAN clustering'
+    // }
   },
   
   // Embedding data
