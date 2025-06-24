@@ -5,9 +5,19 @@ import csv from 'csv-parser';
 
 // Dataset configurations
 export const DATASETS = {
+  WILDBENCH_COMPARISON: {
+    path: 'datasets/wildbench_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
+    label: 'Wildbench Model Comparison',
+    description: 'Wildbench model comparison using HELM predictions'
+  },
+  ARENA_COMPARISON: {
+    path: 'datasets/arena_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
+    label: 'Actual Arena Battles',
+    description: 'Chatbot Arena model comparison with HDBSCAN clustering'
+  },
   DBSCAN_HIERARCHICAL: {
     path: 'datasets/dbscan_hierarchical_mcs_50-2.csv.gz',
-    label: '500 Arena Prompts on many models',
+    label: '500 Arena Prompts',
     description: 'Running a ton of models on 500 different arena prompt (not real arena battles)'
   },
   // Add more datasets as needed

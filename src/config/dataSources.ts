@@ -11,21 +11,21 @@ export const DATA_SOURCES = {
   
   // Available property file options
   PROPERTY_FILES: {
-    // DBSCAN_HIERARCHICAL: {
-    //   path: '/dbscan_hierarchical_mcs_50-2.csv.gz',
-    //   label: '500 Arena Prompts on many models',
-    //   description: 'Running a ton of models on 500 different arena prompt (not real arena battles)'
-    // },
+    WILDBENCH_COMPARISON: {
+      path: '/.netlify/functions/datasets?dataset=WILDBENCH_COMPARISON&full=true',
+      label: 'Wildbench Model Comparison',
+      description: 'Wildbench model comparison using HELM predictions'
+    },
     ARENA_COMPARISON: {
-      path: '/arena_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
+      path: '/.netlify/functions/datasets?dataset=ARENA_COMPARISON&full=true',
       label: 'Actual Arena Battles',
       description: 'Chatbot Arena model comparison with HDBSCAN clustering'
     },
-    WILDBENCH_COMPARISON: {
-      path: '/wildbench_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
-      label: 'Wildbench Model Comparison',
-      description: 'Wildbench model comparison using HELM predictions'
-    }
+    DBSCAN_HIERARCHICAL: {
+      path: '/.netlify/functions/datasets?dataset=DBSCAN_HIERARCHICAL&full=true',
+      label: '500 Arena Prompts',
+      description: 'Running a ton of models on 500 different arena prompt (not real arena battles)'
+    },
   },
   
   // Embedding data
@@ -47,7 +47,7 @@ export const DATA_CONFIG = {
   SKIP_EMPTY_LINES: true,
   
   // File format settings
-  USE_COMPRESSED_DATA: true, // Use compressed file (.gz) - recommended for performance
+  USE_COMPRESSED_DATA: false, // Use compressed file (.gz) - recommended for performance
   USE_PARQUET: false, // Toggle between Parquet and CSV for embeddings
   SELECTED_PROPERTY_FILE: 'DBSCAN_HIERARCHICAL', // Default selection
   
@@ -97,7 +97,7 @@ export const getCurrentDataSources = () => {
   
   // Get the selected property file
   const selectedPropertyFile = DATA_SOURCES.PROPERTY_FILES[selectedFileKey as keyof typeof DATA_SOURCES.PROPERTY_FILES];
-  const propertiesSource = selectedPropertyFile ? selectedPropertyFile.path : DATA_SOURCES.PROPERTIES_CSV;
+  const propertiesSource = selectedPropertyFile.path;
   
   const embeddingsSource = config.USE_PARQUET 
     ? DATA_SOURCES.EMBEDDINGS_PARQUET 
