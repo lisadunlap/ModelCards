@@ -16,7 +16,7 @@ interface PropertyData {
   model: string;
   property_description: string;
   category: string;
-  evidence: string;
+  evidence?: string;
   type: string;
   reason: string;
   impact: string;

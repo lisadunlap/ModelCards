@@ -20,7 +20,7 @@ export interface PropertyData {
   model: string;
   property_description: string;
   category: string;
-  evidence: string;
+  evidence?: string;
   type: string;
   reason: string;
   impact: string;
@@ -125,7 +125,7 @@ class DataLoaderService {
         csvContent = await response.text();
         
         // Check if decompression worked (CSV should start with column headers)
-        if (csvContent.startsWith('prompt,') || csvContent.startsWith('"prompt"')) {
+        if (csvContent.startsWith('prompt,') || csvContent.startsWith('"prompt"') || csvContent.includes(',')) {
           console.log('✅ Automatic decompression successful, size:', csvContent.length, 'characters');
         } else {
           throw new Error('Automatic decompression produced invalid data');
@@ -167,7 +167,16 @@ class DataLoaderService {
     });
     
     console.log('📈 Dataset parsed. Total rows:', parsedData.data?.length || 0);
-    console.log('📈 Sample columns:', Object.keys(parsedData.data?.[0] || {}));
+    
+    // Simple column comparison debugging
+    const actualColumns = Object.keys(parsedData.data?.[0] || {});
+    const expectedColumns = ['prompt', 'model_1_response', 'model_2_response', 'model_1_name', 'model_2_name', 'differences', 'model', 'property_description', 'category', 'type', 'reason', 'impact'];
+    
+    console.log('📊 Expected columns:', expectedColumns);
+    console.log('📊 Actual columns found:', actualColumns);
+    console.log('📊 Missing columns:', expectedColumns.filter(col => !actualColumns.includes(col)));
+    console.log('📊 Extra columns:', actualColumns.filter(col => !expectedColumns.includes(col)));
+    
     console.log('📈 First row sample:', parsedData.data?.[0]);
     console.log('📈 Parse errors:', parsedData.errors?.length || 0);
     if (parsedData.errors && parsedData.errors.length > 0) {
@@ -243,7 +252,7 @@ class DataLoaderService {
       model: row.model || 'Unknown',
       property_description: row.property_description || '',
       category: row.category || 'Unknown',
-      evidence: row.evidence || '',
+      evidence: row.evidence, // Keep as undefined if not present in the dataset
       type: row.type || '',
       reason: row.reason || '',
       impact: row.impact || 'Low',
@@ -264,7 +273,8 @@ class DataLoaderService {
         model_2_name: normalized.model_2_name,
         has_model_1_response: !!normalized.model_1_response,
         has_model_2_response: !!normalized.model_2_response,
-        property_desc_length: normalized.property_description.length
+        property_desc_length: normalized.property_description.length,
+        has_evidence: normalized.evidence !== undefined
       });
     }
     

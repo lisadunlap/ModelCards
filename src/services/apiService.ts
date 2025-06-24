@@ -17,7 +17,7 @@ export interface PropertyData {
   model: string;
   property_description: string;
   category: string;
-  evidence: string;
+  evidence?: string;
   type: string;
   reason: string;
   impact: string;
@@ -30,15 +30,16 @@ export interface PropertyData {
 }
 
 export interface ChartDataRequest {
-  dataset?: string;
+  dataset: string;
   drillLevel: 'coarse' | 'fine' | 'property';
   coarseCluster?: string;
   fineCluster?: string;
-  selectedModels?: string[];
-  showUnexpectedOnly?: boolean;
-  filterBattleModels?: boolean;
-  showDiscrepancyOnly?: boolean;
-  discrepancyThreshold?: number;
+  property?: string;
+  selectedModels: string[];
+  showUnexpectedOnly: boolean;
+  filterBattleModels: boolean;
+  showDiscrepancyOnly: boolean;
+  discrepancyThreshold: number;
 }
 
 export interface ChartDataResponse {
@@ -46,15 +47,13 @@ export interface ChartDataResponse {
   tableData: PropertyData[];
   totalCount: number;
   uniqueModels: string[];
-  cached: boolean;
-  computeTime: number;
-  debugInfo?: any;
+  processingTime: number;
 }
 
 export interface ModelSummariesRequest {
-  dataset?: string;
-  selectedModels?: string[];
-  minItemsThreshold?: number;
+  dataset: string;
+  selectedModels: string[];
+  minItemsThreshold: number;
 }
 
 export interface ClusterSummary {
@@ -73,17 +72,16 @@ export interface ModelSummary {
 }
 
 export interface ModelSummariesResponse {
-  modelSummaries: ModelSummary[];
-  allModelNames: string[];
-  cached: boolean;
-  computeTime: number;
-  debugInfo?: any;
+  summaries: any[];
+  totalModels: number;
+  processingTime: number;
 }
 
 export interface KeywordSearchRequest {
-  dataset?: string;
-  searchQuery: string;
-  minSampleThreshold?: number;
+  dataset: string;
+  query: string;
+  minSampleThreshold: number;
+  selectedModels?: string[];
 }
 
 export interface ClusterMatch {
@@ -96,11 +94,9 @@ export interface ClusterMatch {
 }
 
 export interface KeywordSearchResponse {
-  searchResults: ClusterMatch[];
-  searchQuery: string;
-  cached: boolean;
-  computeTime: number;
-  debugInfo?: any;
+  results: any[];
+  totalMatches: number;
+  processingTime: number;
 }
 
 export interface DatasetInfo {
@@ -119,97 +115,128 @@ class ApiService {
   private baseUrl: string;
 
   constructor() {
-    // Determine API base URL
-    if (typeof window !== 'undefined') {
-      // Client-side: use current origin for production, localhost for development
-      this.baseUrl = window.location.hostname === 'localhost' 
-        ? 'http://localhost:8888/.netlify/functions'
-        : `${window.location.origin}/.netlify/functions`;
-    } else {
-      // Server-side: default to production
-      this.baseUrl = '/.netlify/functions';
-    }
+    // In development, use local dev server; in production, use current domain
+    this.baseUrl = process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:8888/.netlify/functions'  // Netlify dev server
+      : '/.netlify/functions';  // Production
   }
 
-  private async makeRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${this.baseUrl}/${endpoint}`;
+  async getChartData(request: ChartDataRequest): Promise<ChartDataResponse> {
+    console.log('📡 API: Getting chart data with request:', request);
     
-    console.log(`🌐 API Request: ${options.method || 'GET'} ${url}`);
-    
-    const response = await fetch(url, {
-      ...options,
+    const response = await fetch(`${this.baseUrl}/chart-data`, {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...options.headers,
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error:', response.status, errorText);
+      throw new Error(`API Error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ API: Chart data received, entries:', data.chartData?.length || 0);
+    return data;
+  }
+
+  async getModelSummaries(request: ModelSummariesRequest): Promise<ModelSummariesResponse> {
+    console.log('📡 API: Getting model summaries with request:', request);
+    
+    const response = await fetch(`${this.baseUrl}/model-summaries`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error:', response.status, errorText);
+      throw new Error(`API Error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ API: Model summaries received, count:', data.summaries?.length || 0);
+    return data;
+  }
+
+  async searchKeywords(request: KeywordSearchRequest): Promise<KeywordSearchResponse> {
+    console.log('📡 API: Searching keywords with request:', request);
+    
+    const response = await fetch(`${this.baseUrl}/keyword-search`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error:', response.status, errorText);
+      throw new Error(`API Error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ API: Keyword search results received, count:', data.results?.length || 0);
+    return data;
+  }
+
+  async getDatasets(): Promise<any> {
+    console.log('📡 API: Getting available datasets');
+    
+    const response = await fetch(`${this.baseUrl}/datasets`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
       },
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`API Error ${response.status}: ${errorData.error || response.statusText}`);
+      const errorText = await response.text();
+      console.error('❌ API Error:', response.status, errorText);
+      throw new Error(`API Error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    
-    console.log(`✅ API Response: ${endpoint} completed in ${data.computeTime || 0}ms ${data.cached ? '(cached)' : ''}`);
-    
+    console.log('✅ API: Datasets received:', Object.keys(data));
     return data;
   }
 
-  /**
-   * Get available datasets
-   */
-  async getDatasets(): Promise<DatasetsResponse> {
-    return this.makeRequest<DatasetsResponse>('datasets');
-  }
-
-  /**
-   * Get chart data with server-side processing
-   */
-  async getChartData(request: ChartDataRequest): Promise<ChartDataResponse> {
-    return this.makeRequest<ChartDataResponse>('chart-data', {
-      method: 'POST',
-      body: JSON.stringify(request),
+  async loadFullDataset(dataset: string): Promise<{ data: PropertyData[]; totalCount: number; cached: boolean; processingTime: number }> {
+    console.log('📡 API: Loading full dataset:', dataset);
+    
+    const response = await fetch(`${this.baseUrl}/datasets?dataset=${encodeURIComponent(dataset)}&full=true`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
-  }
 
-  /**
-   * Get model summaries with server-side processing
-   */
-  async getModelSummaries(request: ModelSummariesRequest): Promise<ModelSummariesResponse> {
-    return this.makeRequest<ModelSummariesResponse>('model-summaries', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
-  }
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error:', response.status, errorText);
+      throw new Error(`API Error: ${response.status} - ${errorText}`);
+    }
 
-  /**
-   * Perform keyword search with server-side processing
-   */
-  async keywordSearch(request: KeywordSearchRequest): Promise<KeywordSearchResponse> {
-    return this.makeRequest<KeywordSearchResponse>('keyword-search', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
-  }
-
-  /**
-   * Enhanced semantic search (uses existing function)
-   */
-  async semanticSearch(query: string, limit: number = 10): Promise<any> {
-    return this.makeRequest<any>('semantic-search', {
-      method: 'POST',
-      body: JSON.stringify({ query, limit }),
-    });
+    const result = await response.json();
+    console.log('✅ API: Full dataset loaded:', result.totalCount, 'items', result.cached ? '(cached)' : '(fresh)');
+    return result;
   }
 }
 
-// Export singleton instance
 export const apiService = new ApiService();
 
 /**
  * React hook for API calls with loading states
  */
+import React from 'react';
+
 export function useApiCall<T>(
   apiCall: () => Promise<T>,
   dependencies: any[] = []
@@ -238,6 +265,3 @@ export function useApiCall<T>(
 
   return { data, loading, error, refetch: fetchData };
 }
-
-// Import React for the hook
-import React from 'react'; 

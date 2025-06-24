@@ -633,14 +633,17 @@ const ModelDifferenceAnalyzer = () => {
                         </div>
                       </div>
 
-                      {selectedItem.evidence && (
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-900 mb-2">Evidence</h3>
-                          <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model).backgroundColor} ${getModelColor(selectedItem.model).borderColor}`}>
-                            <ContentRenderer content={selectedItem.evidence} className="!bg-transparent !p-0" />
-                          </div>
+                      {/* Always show prompt section prominently */}
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-900 mb-2">Prompt</h3>
+                        <div className="p-3 rounded-md border-l-4 border-gray-400 bg-gray-50">
+                          {selectedItem.prompt ? (
+                            <ContentRenderer content={selectedItem.prompt} className="!bg-transparent !p-0" />
+                          ) : (
+                            <p className="text-gray-500 italic">No prompt available</p>
+                          )}
                         </div>
-                      )}
+                      </div>
 
                       {selectedItem.reason && (
                         <div>
@@ -648,13 +651,6 @@ const ModelDifferenceAnalyzer = () => {
                           <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model).backgroundColor} ${getModelColor(selectedItem.model).borderColor}`}>
                             <ContentRenderer content={selectedItem.reason} className="!bg-transparent !p-0" />
                           </div>
-                        </div>
-                      )}
-
-                      {selectedItem.prompt && (
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-900 mb-2">Prompt</h3>
-                          <ContentRenderer content={selectedItem.prompt} />
                         </div>
                       )}
 
