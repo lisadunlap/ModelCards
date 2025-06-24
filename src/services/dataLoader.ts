@@ -160,10 +160,41 @@ class DataLoaderService {
       total: 0
     });
     
+    // Debug: Log the first few lines to understand the structure
+    const firstLines = csvContent.split('\n').slice(0, 3);
+    console.log('📈 First 3 lines of CSV:', firstLines);
+    
+    // Try to detect delimiter
+    const firstLine = csvContent.split('\n')[0];
+    let delimiter = ',';
+    if (firstLine.includes(';') && firstLine.split(';').length > firstLine.split(',').length) {
+      delimiter = ';';
+      console.log('📈 Detected semicolon delimiter');
+    } else if (firstLine.includes('\t') && firstLine.split('\t').length > firstLine.split(',').length) {
+      delimiter = '\t';
+      console.log('📈 Detected tab delimiter');
+    } else {
+      console.log('📈 Using comma delimiter');
+    }
+    
     const parsedData = Papa.parse(csvContent, {
       header: true,
+      delimiter: delimiter,
+      quoteChar: '"',
+      escapeChar: '"',
       dynamicTyping: DATA_CONFIG.ENABLE_DYNAMIC_TYPING,
       skipEmptyLines: DATA_CONFIG.SKIP_EMPTY_LINES,
+      transformHeader: (header: string) => {
+        // Clean up header names - remove BOM, trim whitespace, etc.
+        return header.replace(/^\uFEFF/, '').trim();
+      },
+      transform: (value: string, header: string) => {
+        // Clean up values - remove extra quotes, trim whitespace
+        if (typeof value === 'string') {
+          return value.replace(/^["']|["']$/g, '').trim();
+        }
+        return value;
+      }
     });
     
     console.log('📈 Dataset parsed. Total rows:', parsedData.data?.length || 0);
