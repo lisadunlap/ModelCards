@@ -21,11 +21,11 @@ export const DATA_SOURCES = {
       label: 'Actual Arena Battles',
       description: 'Chatbot Arena model comparison with HDBSCAN clustering'
     },
-    // WILDBENCH_COMPARISON: {
-    //   path: './wildbench_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
-    //   label: 'Wildbench Model Comparison',
-    //   description: 'Wildbench model comparison with HDBSCAN clustering'
-    // }
+    WILDBENCH_COMPARISON: {
+      path: './wildbench_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
+      label: 'Wildbench Model Comparison',
+      description: 'Wildbench model comparison with HDBSCAN clustering'
+    }
   },
   
   // Embedding data
