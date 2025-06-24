@@ -1,75 +1,116 @@
-import type { Handler, HandlerEvent, HandlerContext, HandlerResponse } from '@netlify/functions';
+import { Handler } from '@netlify/functions';
+import { loadDataFromWasabi, DATASETS } from './_shared/wasabi-loader';
 
-// Dataset configurations
-const DATASETS = {
-  DBSCAN_HIERARCHICAL: {
-    path: 'datasets/dbscan_hierarchical_mcs_50-2.csv.gz',
-    label: '500 Arena Prompts on many models',
-    description: 'Running a ton of models on 500 different arena prompt (not real arena battles)'
-  },
-  // Add more datasets as they become available
-  // ARENA_COMPARISON: {
-  //   path: 'datasets/arena_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
-  //   label: 'Actual Arena Battles',
-  //   description: 'Chatbot Arena model comparison with HDBSCAN clustering'
-  // },
-};
+// Simple in-memory cache
+const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
-export const handler: Handler = async (event: HandlerEvent, context: HandlerContext): Promise<HandlerResponse> => {
+export const handler: Handler = async (event, context) => {
+  const startTime = Date.now();
+  
   try {
+    console.log(`📡 Datasets function called: ${event.httpMethod} ${event.path}`);
+    
     // Handle CORS
-    if (event.httpMethod === 'OPTIONS') {
-      return {
-        statusCode: 200,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-        body: '',
-      };
-    }
-
-    if (event.httpMethod !== 'GET') {
-      return {
-        statusCode: 405,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-        body: JSON.stringify({ error: 'Method not allowed' }),
-      };
-    }
-
-    const response = {
-      datasets: Object.entries(DATASETS).map(([key, config]) => ({
-        key,
-        ...config
-      })),
-      default: 'DBSCAN_HIERARCHICAL'
+    const headers = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Content-Type': 'application/json',
     };
 
+    if (event.httpMethod === 'OPTIONS') {
+      return { statusCode: 200, headers, body: '' };
+    }
+
+    // Parse query parameters
+    const queryParams = event.queryStringParameters || {};
+    const requestedDataset = queryParams.dataset;
+    const loadFullData = queryParams.full === 'true';
+
+    if (event.httpMethod === 'GET') {
+      if (loadFullData && requestedDataset) {
+        // Load full dataset
+        console.log(`📊 Loading full dataset: ${requestedDataset}`);
+        
+        const cacheKey = `full_${requestedDataset}`;
+        const cached = cache.get(cacheKey);
+        
+        if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+          console.log(`✅ Returning cached full data for ${requestedDataset} (${cached.data.length} items)`);
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              dataset: requestedDataset,
+              data: cached.data,
+              totalCount: cached.data.length,
+              cached: true,
+              processingTime: Date.now() - startTime
+            }),
+          };
+        }
+
+        // Load fresh data
+        const fullData = await loadDataFromWasabi(requestedDataset);
+        
+        // Cache the result
+        cache.set(cacheKey, {
+          data: fullData,
+          timestamp: Date.now()
+        });
+        
+        console.log(`✅ Loaded full dataset: ${fullData.length} items`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            dataset: requestedDataset,
+            data: fullData,
+            totalCount: fullData.length,
+            cached: false,
+            processingTime: Date.now() - startTime
+          }),
+        };
+      } else {
+        // Return available datasets
+        const datasets = Object.entries(DATASETS).map(([key, config]) => ({
+          key,
+          ...config
+        }));
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            datasets,
+            default: 'DBSCAN_HIERARCHICAL',
+            processingTime: Date.now() - startTime
+          }),
+        };
+      }
+    }
+
     return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
-      },
-      body: JSON.stringify(response),
+      statusCode: 405,
+      headers,
+      body: JSON.stringify({ error: 'Method not allowed' }),
     };
 
   } catch (error) {
-    console.error('❌ Error listing datasets:', error);
+    console.error('❌ Datasets function error:', error);
+    
     return {
       statusCode: 500,
       headers: {
-        'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        message: error instanceof Error ? error.message : 'Unknown error',
+        processingTime: Date.now() - startTime
       }),
     };
   }

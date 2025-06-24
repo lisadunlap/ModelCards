@@ -50,6 +50,10 @@ interface ChartDataResponse {
 const cache = new Map<string, { data: ChartDataResponse; timestamp: number }>();
 const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes for server-side
 
+// NEW: raw dataset cache (pre-parsed rows) so we don't fetch & parse on every request
+const rawDatasetCache = new Map<string, { rows: PropertyData[]; timestamp: number }>();
+const RAW_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
 // Dataset configurations
 const DATASETS = {
   DBSCAN_HIERARCHICAL: {
@@ -174,50 +178,56 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 };
 
 async function loadDataFromSource(dataset: string): Promise<PropertyData[]> {
+  // Check raw cache first
+  const cached = rawDatasetCache.get(dataset);
+  if (cached && (Date.now() - cached.timestamp) < RAW_CACHE_TTL) {
+    console.log(`🔥 Using cached raw rows for dataset ${dataset} (`, cached.rows.length, 'rows )`');
+    return cached.rows;
+  }
+
   const wasabiBucket = process.env.WASABI_BUCKET || 'vibes';
   const wasabiEndpoint = process.env.WASABI_ENDPOINT || 'https://s3.wasabisys.com';
   const datasetConfig = DATASETS[dataset as keyof typeof DATASETS];
-  
   if (!datasetConfig) {
     throw new Error(`Unknown dataset: ${dataset}`);
   }
-  
+
   const dataUrl = `${wasabiEndpoint}/${wasabiBucket}/${datasetConfig.path}`;
-  
-  console.log(`📡 Loading data from: ${dataUrl}`);
-  
+  console.log(`📡 Downloading CSV from ${dataUrl}`);
+
   const response = await fetch(dataUrl);
   if (!response.ok) {
     throw new Error(`Failed to load data from ${dataUrl}: ${response.statusText}`);
   }
-  
+
+  // Stream into memory (still one buffer) – quick-win; proper stream parse would pipe.
+  const arrayBuf = await response.arrayBuffer();
   let csvContent: string;
-  if (dataUrl.endsWith('.gz')) {
-    // Handle compressed data
-    const buffer = await response.arrayBuffer();
-    csvContent = await decompressGzip(buffer);
+  if (datasetConfig.path.endsWith('.gz')) {
+    const { gunzipSync } = await import('zlib');
+    csvContent = gunzipSync(Buffer.from(arrayBuf)).toString('utf8');
   } else {
-    csvContent = await response.text();
+    csvContent = Buffer.from(arrayBuf).toString('utf8');
   }
-  
-  console.log(`📦 Loaded ${csvContent.length} bytes of CSV data`);
-  
-  // Parse CSV
+  console.log(`📦 CSV size (utf8 chars):`, csvContent.length);
+
+  // Parse with Papa (sync)
   const Papa = await import('papaparse');
   const parsed = Papa.default.parse(csvContent, {
     header: true,
     dynamicTyping: true,
     skipEmptyLines: true,
+    fastMode: true,
   });
-  
-  console.log(`📋 Parsed ${parsed.data.length} rows with ${parsed.errors.length} errors`);
-  
-  return (parsed.data as any[])
-    .filter(row => row && row.property_description)
-    .map((row, index) => ({
-      ...row,
-      row_id: index + 1,
-    }));
+  console.log(`📋 Parsed`, parsed.data.length, 'rows. Errors:', parsed.errors.length);
+
+  const rows: PropertyData[] = (parsed.data as any[])
+    .filter((row) => row && row.property_description)
+    .map((row, idx) => ({ ...row, row_id: idx + 1 }));
+
+  rawDatasetCache.set(dataset, { rows, timestamp: Date.now() });
+  console.log(`✅ Cached raw dataset (${rows.length} rows, ttl ${RAW_CACHE_TTL/1000}s)`);
+  return rows;
 }
 
 function filterData(data: PropertyData[], request: ChartDataRequest): PropertyData[] {
@@ -412,18 +422,4 @@ function generateAdvancedChartData(data: PropertyData[], request: ChartDataReque
   console.log(`✅ Final chart data: ${finalData.length} entries`);
   
   return finalData;
-}
-
-async function decompressGzip(buffer: ArrayBuffer): Promise<string> {
-  // Use native Compression Streams API if available
-  if (typeof DecompressionStream !== 'undefined') {
-    const decompressor = new DecompressionStream('gzip');
-    const stream = new Response(buffer).body!.pipeThrough(decompressor);
-    const decompressed = await new Response(stream).arrayBuffer();
-    return new TextDecoder().decode(decompressed);
-  }
-  
-  // Fallback: Try to use a simple implementation
-  // For production, you might want to use a proper gzip library
-  throw new Error('Gzip decompression not supported in this environment. Please use uncompressed files or add pako library.');
 } 
