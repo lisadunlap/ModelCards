@@ -11,11 +11,11 @@ export const DATA_SOURCES = {
   
   // Available property file options
   PROPERTY_FILES: {
-    DBSCAN_HIERARCHICAL: {
-      path: '/dbscan_hierarchical_mcs_50-2.csv.gz',
-      label: '500 Arena Prompts on many models',
-      description: 'Running a ton of models on 500 different arena prompt (not real arena battles)'
-    },
+    // DBSCAN_HIERARCHICAL: {
+    //   path: '/dbscan_hierarchical_mcs_50-2.csv.gz',
+    //   label: '500 Arena Prompts on many models',
+    //   description: 'Running a ton of models on 500 different arena prompt (not real arena battles)'
+    // },
     ARENA_COMPARISON: {
       path: '/arena_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
       label: 'Actual Arena Battles',
