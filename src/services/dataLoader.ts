@@ -82,7 +82,8 @@ class DataLoaderService {
   private async loadFullDataset(onProgress?: (progress: LoadingProgress) => void): Promise<PropertyData[]> {
     const sources = getCurrentDataSources();
     
-    console.log('📁 Loading dataset from API:', sources.properties);
+    console.log('📁 Loading dataset from:', sources.properties);
+    console.log('📁 Is compressed?', sources.properties.endsWith('.gz'));
     
     onProgress?.({
       status: 'Loading dataset...',
@@ -91,45 +92,142 @@ class DataLoaderService {
       total: 0
     });
     
-    const response = await fetch(sources.properties);
+    const response = await fetch(sources.properties, {
+      headers: {
+        'Accept-Encoding': 'gzip, deflate',
+        'Accept': 'text/csv, text/plain, */*'
+      }
+    });
     if (!response.ok) {
-      throw new Error(`Failed to load data from API: ${response.statusText}`);
+      throw new Error(`Failed to load data: ${response.statusText}`);
     }
     
-    console.log('📁 API Response headers:', Object.fromEntries(response.headers.entries()));
+    console.log('📁 Response headers:', Object.fromEntries(response.headers.entries()));
+    console.log('📁 Response size:', response.headers.get('content-length'), 'bytes');
     
     onProgress?.({
-      status: 'Parsing dataset...',
-      progress: 50,
+      status: 'Reading dataset (this may take a while)...',
+      progress: 30,
       loaded: 0,
       total: 0
     });
     
-    // The endpoint returns a JSON object with a 'data' property containing the array of records.
-    const jsonResponse = await response.json();
+    let csvContent: string;
     
-    if (!jsonResponse || !jsonResponse.data) {
-      throw new Error('Invalid JSON response from server');
-    }
-    
-    const jsonData = jsonResponse.data as PropertyData[];
-    console.log('📈 Dataset loaded from JSON API. Total rows:', jsonData.length);
-
-    // Simple column comparison debugging (optional, but good for verification)
-    if (jsonData.length > 0) {
-      const actualColumns = Object.keys(jsonData[0]);
-      const expectedColumns = ['prompt', 'model_1_response', 'model_2_response', 'model_1_name', 'model_2_name', 'differences', 'model', 'property_description', 'category', 'type', 'reason', 'impact'];
+    // Handle compressed data
+    if (sources.properties.endsWith('.gz')) {
+      // Clone the response so we can try multiple approaches
+      const responseClone = response.clone();
       
-      console.log('📊 Expected columns:', expectedColumns);
-      console.log('📊 Actual columns found:', actualColumns);
-      console.log('📊 Missing columns:', expectedColumns.filter(col => !actualColumns.includes(col)));
-      console.log('📊 Extra columns:', actualColumns.filter(col => !expectedColumns.includes(col)));
-      console.log('📈 First row sample:', jsonData[0]);
+      try {
+        // Try automatic decompression first
+        console.log('🗜️ Attempting automatic decompression...');
+        csvContent = await response.text();
+        
+        // Check if decompression worked (CSV should start with column headers)
+        if (csvContent.startsWith('prompt,') || csvContent.startsWith('"prompt"') || csvContent.includes(',')) {
+          console.log('✅ Automatic decompression successful, size:', csvContent.length, 'characters');
+        } else {
+          throw new Error('Automatic decompression produced invalid data');
+        }
+      } catch (error) {
+        console.log('🗜️ Automatic decompression failed, trying manual...', error);
+        
+        onProgress?.({
+          status: 'Decompressing dataset...',
+          progress: 50,
+          loaded: 0,
+          total: 0
+        });
+        
+        // Use the cloned response for manual decompression
+        const buffer = await responseClone.arrayBuffer();
+        console.log('📁 Compressed buffer size:', buffer.byteLength, 'bytes');
+        csvContent = await this.decompressGzip(buffer);
+        console.log('📁 Manually decompressed size:', csvContent.length, 'characters');
+      }
+    } else {
+      csvContent = await response.text();
+      console.log('📁 Uncompressed size:', csvContent.length, 'characters');
     }
     
-    // The data is already structured, so we can filter and process it directly.
-    const validRows = jsonData.filter(row => row && row.property_description);
-    console.log('📈 Rows after filtering for valid property_description:', validRows.length);
+    const Papa = (await import('papaparse')).default;
+    
+    onProgress?.({
+      status: 'Parsing dataset...',
+      progress: 70,
+      loaded: 0,
+      total: 0
+    });
+    
+    // Debug: Log the first few lines to understand the structure
+    const firstLines = csvContent.split('\n').slice(0, 3);
+    console.log('📈 First 3 lines of CSV:', firstLines);
+    
+    // Try to detect delimiter
+    const firstLine = csvContent.split('\n')[0];
+    let delimiter = ',';
+    
+    // Count occurrences of each potential delimiter
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const semicolonCount = (firstLine.match(/;/g) || []).length;
+    const tabCount = (firstLine.match(/\t/g) || []).length;
+    
+    console.log('📈 Delimiter counts - commas:', commaCount, 'semicolons:', semicolonCount, 'tabs:', tabCount);
+    
+    // Choose the delimiter with the most occurrences
+    if (semicolonCount > commaCount && semicolonCount > tabCount) {
+      delimiter = ';';
+      console.log('📈 Detected semicolon delimiter');
+    } else if (tabCount > commaCount && tabCount > semicolonCount) {
+      delimiter = '\t';
+      console.log('📈 Detected tab delimiter');
+    } else {
+      delimiter = ',';
+      console.log('📈 Using comma delimiter (default or most common)');
+    }
+    
+    const parsedData = Papa.parse(csvContent, {
+      header: true,
+      delimiter: delimiter,
+      quoteChar: '"',
+      escapeChar: '"',
+      dynamicTyping: DATA_CONFIG.ENABLE_DYNAMIC_TYPING,
+      skipEmptyLines: DATA_CONFIG.SKIP_EMPTY_LINES,
+      transformHeader: (header: string) => {
+        // Clean up header names - remove BOM, trim whitespace, etc.
+        return header.replace(/^\uFEFF/, '').trim();
+      },
+      transform: (value: string, header: string) => {
+        // Clean up values - remove extra quotes, trim whitespace
+        if (typeof value === 'string') {
+          return value.replace(/^["']|["']$/g, '').trim();
+        }
+        return value;
+      }
+    });
+    
+    console.log('📈 Dataset parsed. Total rows:', parsedData.data?.length || 0);
+    
+    // Simple column comparison debugging
+    const actualColumns = Object.keys(parsedData.data?.[0] || {});
+    const expectedColumns = ['prompt', 'model_1_response', 'model_2_response', 'model_1_name', 'model_2_name', 'differences', 'model', 'property_description', 'category', 'type', 'reason', 'impact'];
+    
+    console.log('📊 Expected columns:', expectedColumns);
+    console.log('📊 Actual columns found:', actualColumns);
+    console.log('📊 Missing columns:', expectedColumns.filter(col => !actualColumns.includes(col)));
+    console.log('📊 Extra columns:', actualColumns.filter(col => !expectedColumns.includes(col)));
+    
+    console.log('📈 First row sample:', parsedData.data?.[0]);
+    console.log('📈 Parse errors:', parsedData.errors?.length || 0);
+    if (parsedData.errors && parsedData.errors.length > 0) {
+      console.log('📈 Parse errors sample:', parsedData.errors.slice(0, 3));
+    }
+    
+    // Debug filtering
+    const validRows = (parsedData.data as any[]).filter(row => row && row.property_description);
+    console.log('📈 Rows after filtering:', validRows.length);
+    console.log('📈 Sample valid row:', validRows[0]);
     
     const processedData = validRows.map((row, index) => {
       // Always assign a unique row_id based on the index
@@ -222,6 +320,60 @@ class DataLoaderService {
     }
     
     return normalized;
+  }
+  
+  private async decompressGzip(buffer: ArrayBuffer): Promise<string> {
+    // Try native DecompressionStream first (available in modern browsers)
+    if (typeof DecompressionStream !== 'undefined') {
+      try {
+        console.log('🗜️ Using native DecompressionStream...');
+        const decompressedStream = new DecompressionStream('gzip');
+        const writer = decompressedStream.writable.getWriter();
+        const reader = decompressedStream.readable.getReader();
+        
+        writer.write(new Uint8Array(buffer));
+        writer.close();
+        
+        const chunks: Uint8Array[] = [];
+        let done = false;
+        
+        while (!done) {
+          const { value, done: readerDone } = await reader.read();
+          done = readerDone;
+          if (value) {
+            chunks.push(value);
+          }
+        }
+        
+        const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+        const result = new Uint8Array(totalLength);
+        let offset = 0;
+        
+        for (const chunk of chunks) {
+          result.set(chunk, offset);
+          offset += chunk.length;
+        }
+        
+        const decompressed = new TextDecoder().decode(result);
+        console.log('✅ Native decompression successful');
+        return decompressed;
+      } catch (error) {
+        console.log('⚠️ Native DecompressionStream failed, trying pako fallback...', error);
+      }
+    }
+    
+    // Fallback to pako library
+    try {
+      console.log('🗜️ Using pako fallback for gzip decompression...');
+      const pako = await import('pako');
+      const uint8Array = new Uint8Array(buffer);
+      const decompressed = pako.ungzip(uint8Array, { to: 'string' });
+      console.log('✅ Pako decompression successful');
+      return decompressed;
+    } catch (error) {
+      console.error('❌ Both native and pako decompression failed:', error);
+      throw new Error(`Gzip decompression failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
   
   private isCacheValid(): boolean {

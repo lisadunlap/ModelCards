@@ -5,36 +5,50 @@
  * Update these paths to point to your data files.
  */
 
+// -----------------------------------------------------------------------------
+// External CDN (e.g., Wasabi / S3) support
+// -----------------------------------------------------------------------------
+// If you have very large CSV/Parquet files you can host them on an external
+// object store instead of bundling them with the Netlify site (Netlify static
+// asset limit is 25 MB).  Set VITE_DATA_CDN_BASE in your environment (or
+// Netlify UI) to the base URL of the bucket, e.g.
+//   VITE_DATA_CDN_BASE=https://vibes.s3.us-west-1.wasabisys.com
+// All paths below will automatically be prefixed with this value when it is
+// present.  Locally (where the env var is usually unset) the app will fall
+// back to the original relative paths in /public.
+// -----------------------------------------------------------------------------
+
+const CDN_BASE = import.meta.env.VITE_DATA_CDN_BASE ?? '';
+
+// Helper to prefix a path with the CDN base only when the base is defined
+const cdnPath = (relativePath: string) => (CDN_BASE ? `${CDN_BASE}${relativePath}` : relativePath);
+
 export const DATA_SOURCES = {
   // Main CSV files for model properties - Multiple options
-  PROPERTIES_CSV: '/wildbench_comparisons_sample_hdbscan_clustered.csv.gz',
+  PROPERTIES_CSV: cdnPath('/dbscan_hierarchical_mcs_50-2.csv.gz'),
   
   // Available property file options
   PROPERTY_FILES: {
-    WILDBENCH_COMPARISON: {
-      path: '/.netlify/functions/datasets?dataset=WILDBENCH_COMPARISON&full=true',
-      label: 'Wildbench Model Comparison',
-      description: 'Wildbench model comparison using HELM predictions'
+    DBSCAN_HIERARCHICAL: {
+      path: cdnPath('/dbscan_hierarchical_mcs_50-2.csv.gz'),
+      label: '500 Arena Prompts on many models',
+      description: 'Running a ton of models on 500 different arena prompt (not real arena battles)'
     },
     ARENA_COMPARISON: {
-      path: '/.netlify/functions/datasets?dataset=ARENA_COMPARISON&full=true',
+      path: cdnPath('/arena_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz'),
       label: 'Actual Arena Battles',
       description: 'Chatbot Arena model comparison with HDBSCAN clustering'
     },
-    DBSCAN_HIERARCHICAL: {
-      path: '/.netlify/functions/datasets?dataset=DBSCAN_HIERARCHICAL&full=true',
-      label: '500 Arena Prompts',
-      description: 'Running a ton of models on 500 different arena prompt (not real arena battles)'
-    },
+    WILDBENCH_COMPARISON: {
+      path: cdnPath('/wildbench_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz'),
+      label: 'Wildbench Model Comparison',
+      description: 'Wildbench model comparison using HELM predictions'
+    }
   },
   
   // Embedding data
-  EMBEDDINGS_CSV: '/embedding_sample.csv',
-  EMBEDDINGS_PARQUET: '/all_one_sided_comparisons_clustered_with_embeddings-clean.parquet',
-  
-  // Backup or test data sources (legacy - keep for reference)
-  SAMPLE_DIFFERENCES_CSV: '/sample_differences.csv',
-  SAMPLE_PROPERTIES_CSV: '/sample_properties.csv',
+  EMBEDDINGS_CSV: cdnPath('/embedding_sample.csv'),
+  EMBEDDINGS_PARQUET: cdnPath('/all_one_sided_comparisons_clustered_with_embeddings-clean.parquet'),
 } as const;
 
 /**
@@ -47,7 +61,7 @@ export const DATA_CONFIG = {
   SKIP_EMPTY_LINES: true,
   
   // File format settings
-  USE_COMPRESSED_DATA: false, // Use compressed file (.gz) - recommended for performance
+  USE_COMPRESSED_DATA: true, // Use compressed file (.gz) - recommended for performance
   USE_PARQUET: false, // Toggle between Parquet and CSV for embeddings
   SELECTED_PROPERTY_FILE: 'DBSCAN_HIERARCHICAL', // Default selection
   
@@ -97,7 +111,7 @@ export const getCurrentDataSources = () => {
   
   // Get the selected property file
   const selectedPropertyFile = DATA_SOURCES.PROPERTY_FILES[selectedFileKey as keyof typeof DATA_SOURCES.PROPERTY_FILES];
-  const propertiesSource = selectedPropertyFile.path;
+  const propertiesSource = selectedPropertyFile ? selectedPropertyFile.path : DATA_SOURCES.PROPERTIES_CSV;
   
   const embeddingsSource = config.USE_PARQUET 
     ? DATA_SOURCES.EMBEDDINGS_PARQUET 
