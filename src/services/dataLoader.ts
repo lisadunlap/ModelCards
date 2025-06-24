@@ -167,14 +167,24 @@ class DataLoaderService {
     // Try to detect delimiter
     const firstLine = csvContent.split('\n')[0];
     let delimiter = ',';
-    if (firstLine.includes(';') && firstLine.split(';').length > firstLine.split(',').length) {
+    
+    // Count occurrences of each potential delimiter
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const semicolonCount = (firstLine.match(/;/g) || []).length;
+    const tabCount = (firstLine.match(/\t/g) || []).length;
+    
+    console.log('📈 Delimiter counts - commas:', commaCount, 'semicolons:', semicolonCount, 'tabs:', tabCount);
+    
+    // Choose the delimiter with the most occurrences
+    if (semicolonCount > commaCount && semicolonCount > tabCount) {
       delimiter = ';';
       console.log('📈 Detected semicolon delimiter');
-    } else if (firstLine.includes('\t') && firstLine.split('\t').length > firstLine.split(',').length) {
+    } else if (tabCount > commaCount && tabCount > semicolonCount) {
       delimiter = '\t';
       console.log('📈 Detected tab delimiter');
     } else {
-      console.log('📈 Using comma delimiter');
+      delimiter = ',';
+      console.log('📈 Using comma delimiter (default or most common)');
     }
     
     const parsedData = Papa.parse(csvContent, {
@@ -313,35 +323,57 @@ class DataLoaderService {
   }
   
   private async decompressGzip(buffer: ArrayBuffer): Promise<string> {
-    // Simple gzip decompression using DecompressionStream
-    const decompressedStream = new DecompressionStream('gzip');
-    const writer = decompressedStream.writable.getWriter();
-    const reader = decompressedStream.readable.getReader();
-    
-    writer.write(new Uint8Array(buffer));
-    writer.close();
-    
-    const chunks: Uint8Array[] = [];
-    let done = false;
-    
-    while (!done) {
-      const { value, done: readerDone } = await reader.read();
-      done = readerDone;
-      if (value) {
-        chunks.push(value);
+    // Try native DecompressionStream first (available in modern browsers)
+    if (typeof DecompressionStream !== 'undefined') {
+      try {
+        console.log('🗜️ Using native DecompressionStream...');
+        const decompressedStream = new DecompressionStream('gzip');
+        const writer = decompressedStream.writable.getWriter();
+        const reader = decompressedStream.readable.getReader();
+        
+        writer.write(new Uint8Array(buffer));
+        writer.close();
+        
+        const chunks: Uint8Array[] = [];
+        let done = false;
+        
+        while (!done) {
+          const { value, done: readerDone } = await reader.read();
+          done = readerDone;
+          if (value) {
+            chunks.push(value);
+          }
+        }
+        
+        const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+        const result = new Uint8Array(totalLength);
+        let offset = 0;
+        
+        for (const chunk of chunks) {
+          result.set(chunk, offset);
+          offset += chunk.length;
+        }
+        
+        const decompressed = new TextDecoder().decode(result);
+        console.log('✅ Native decompression successful');
+        return decompressed;
+      } catch (error) {
+        console.log('⚠️ Native DecompressionStream failed, trying pako fallback...', error);
       }
     }
     
-    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-    const result = new Uint8Array(totalLength);
-    let offset = 0;
-    
-    for (const chunk of chunks) {
-      result.set(chunk, offset);
-      offset += chunk.length;
+    // Fallback to pako library
+    try {
+      console.log('🗜️ Using pako fallback for gzip decompression...');
+      const pako = await import('pako');
+      const uint8Array = new Uint8Array(buffer);
+      const decompressed = pako.ungzip(uint8Array, { to: 'string' });
+      console.log('✅ Pako decompression successful');
+      return decompressed;
+    } catch (error) {
+      console.error('❌ Both native and pako decompression failed:', error);
+      throw new Error(`Gzip decompression failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    
-    return new TextDecoder().decode(result);
   }
   
   private isCacheValid(): boolean {

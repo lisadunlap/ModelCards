@@ -13,6 +13,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.832.0",
     "@netlify/functions": "^2.0.0",
+    "@types/pako": "^2.0.3",
     "aws-sdk": "^2.1691.0",
     "cors": "^2.8.5",
     "csv-parser": "^3.2.0",
@@ -20,6 +21,7 @@
     "lucide-react": "^0.263.1",
     "node-fetch": "^3.3.2",
     "openai": "^5.3.0",
+    "pako": "^2.1.0",
     "papaparse": "^5.5.3",
     "parquet-wasm": "^0.6.1",
     "prismjs": "^1.30.0",
