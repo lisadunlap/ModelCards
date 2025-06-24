@@ -218,7 +218,7 @@ const ModelDifferenceAnalyzer = () => {
     { id: 'summaries', label: 'Summaries', icon: TrendingUp },
     { id: 'properties', label: 'Property Analysis', icon: BarChart3 },
     { id: 'keyword-search', label: 'Keyword Search', icon: FileSearch },
-    { id: 'search', label: 'Semantic Search', icon: Brain },
+    // { id: 'search', label: 'Semantic Search', icon: Brain },
     { id: 'view-responses', label: 'View Responses', icon: MessageCircle }
   ];
 
@@ -455,20 +455,6 @@ const ModelDifferenceAnalyzer = () => {
                   </button>
 
                   <button
-                    onClick={() => setSelectedView('search')}
-                    className="bg-white rounded-lg p-4 border-l-4 border-indigo-400 hover:bg-indigo-50 hover:shadow-md transition-all duration-200 text-left cursor-pointer"
-                  >
-                    <div className="flex items-center mb-2">
-                      <Brain className="h-5 w-5 text-indigo-600 mr-2" />
-                      <h4 className="font-medium text-gray-900">Semantic Search</h4>
-                    </div>
-                    <p className="text-sm text-gray-600">
-                      AI-powered semantic search using vector embeddings to find similar properties. 
-                      Uses OpenAI embeddings for intelligent content discovery beyond keyword matching.
-                    </p>
-                  </button>
-
-                  <button
                     onClick={() => setSelectedView('view-responses')}
                     className="bg-white rounded-lg p-4 border-l-4 border-orange-400 hover:bg-orange-50 hover:shadow-md transition-all duration-200 text-left cursor-pointer"
                   >
@@ -510,16 +496,6 @@ const ModelDifferenceAnalyzer = () => {
           {selectedView === 'summaries' && propertyData.length > 0 && (
             <ModelSummaries 
               data={propertyData} 
-            />
-          )}
-
-          {selectedView === 'search' && (
-            <SemanticSearch 
-              onViewResponse={(item) => {
-                console.log('View search result:', item);
-                setSelectedItem(item);
-                setSidebarOpen(true);
-              }} 
             />
           )}
 

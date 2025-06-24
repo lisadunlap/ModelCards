@@ -7,34 +7,34 @@
 
 export const DATA_SOURCES = {
   // Main CSV files for model properties - Multiple options
-  PROPERTIES_CSV: './wildbench_comparisons_sample_hdbscan_clustered.csv.gz',
+  PROPERTIES_CSV: '/wildbench_comparisons_sample_hdbscan_clustered.csv.gz',
   
   // Available property file options
   PROPERTY_FILES: {
     DBSCAN_HIERARCHICAL: {
-      path: './dbscan_hierarchical_mcs_50-2.csv.gz',
+      path: '/dbscan_hierarchical_mcs_50-2.csv.gz',
       label: '500 Arena Prompts on many models',
       description: 'Running a ton of models on 500 different arena prompt (not real arena battles)'
     },
     ARENA_COMPARISON: {
-      path: './arena_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
+      path: '/arena_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
       label: 'Actual Arena Battles',
       description: 'Chatbot Arena model comparison with HDBSCAN clustering'
     },
     WILDBENCH_COMPARISON: {
-      path: './wildbench_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
+      path: '/wildbench_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
       label: 'Wildbench Model Comparison',
-      description: 'Wildbench model comparison with HDBSCAN clustering'
+      description: 'Wildbench model comparison using HELM predictions'
     }
   },
   
   // Embedding data
-  EMBEDDINGS_CSV: './embedding_sample.csv',
-  EMBEDDINGS_PARQUET: './all_one_sided_comparisons_clustered_with_embeddings-clean.parquet',
+  EMBEDDINGS_CSV: '/embedding_sample.csv',
+  EMBEDDINGS_PARQUET: '/all_one_sided_comparisons_clustered_with_embeddings-clean.parquet',
   
   // Backup or test data sources (legacy - keep for reference)
-  SAMPLE_DIFFERENCES_CSV: './sample_differences.csv',
-  SAMPLE_PROPERTIES_CSV: './sample_properties.csv',
+  SAMPLE_DIFFERENCES_CSV: '/sample_differences.csv',
+  SAMPLE_PROPERTIES_CSV: '/sample_properties.csv',
 } as const;
 
 /**
