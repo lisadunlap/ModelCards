@@ -92,7 +92,32 @@ class DataLoaderService {
       total: 0
     });
     
-    const response = await fetch(sources.properties, {
+    // ---------------------------------------------------------------------
+    // 🔐 Obtain a short-lived pre-signed URL so we can keep the Wasabi bucket
+    //     private.  If the Netlify function is not available (e.g. local dev
+    //     without `netlify dev`) we gracefully fall back to the public path.
+    // ---------------------------------------------------------------------
+    let dataUrl = sources.properties;
+    try {
+      const datasetKey = this.loadingStrategy.selectedPropertyFile || 'DBSCAN_HIERARCHICAL';
+      const presignEndpoint = `/.netlify/functions/get-signed-url?dataset=${encodeURIComponent(datasetKey)}`;
+      const presignResp = await fetch(presignEndpoint);
+      if (presignResp.ok) {
+        const json = await presignResp.json();
+        if (json?.url) {
+          console.log('🔑 Using signed URL for dataset');
+          dataUrl = json.url;
+        } else {
+          console.warn('⚠️ Signed URL response missing "url" field, falling back to public path');
+        }
+      } else {
+        console.warn('⚠️ Signed URL request failed (status', presignResp.status, '), falling back');
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not obtain signed URL, proceeding with public path:', error);
+    }
+    
+    const response = await fetch(dataUrl, {
       headers: {
         'Accept-Encoding': 'gzip, deflate',
         'Accept': 'text/csv, text/plain, */*'
