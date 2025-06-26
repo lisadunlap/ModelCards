@@ -42,7 +42,6 @@ export interface LoadingProgress {
 class DataLoaderService {
   private tableData: PropertyData[] = [];
   private detailDataCache = new Map<number, PropertyData>();
-  private loadingStrategy = getLoadingStrategy();
   
   // Cache management
   private cacheKey = 'model_analyzer_data';
@@ -54,9 +53,10 @@ class DataLoaderService {
   }
   
   async loadTableData(onProgress?: (progress: LoadingProgress) => void): Promise<PropertyData[]> {
+    const loadingStrategy = getLoadingStrategy(); // Get the latest strategy
     try {
       // Check if we can use cached data
-      if (this.loadingStrategy.enableBrowserCache && this.isCacheValid()) {
+      if (loadingStrategy.enableBrowserCache && this.isCacheValid()) {
         const cachedData = this.getCachedData();
         if (cachedData) {
           onProgress?.({
@@ -99,7 +99,8 @@ class DataLoaderService {
     // ---------------------------------------------------------------------
     let dataUrl = sources.properties;
     try {
-      const datasetKey = this.loadingStrategy.selectedPropertyFile || 'DBSCAN_HIERARCHICAL';
+      const loadingStrategy = getLoadingStrategy(); // Get the latest strategy
+      const datasetKey = loadingStrategy.selectedPropertyFile || 'DBSCAN_HIERARCHICAL';
       const presignEndpoint = `/.netlify/functions/get-signed-url?dataset=${encodeURIComponent(datasetKey)}`;
       const presignResp = await fetch(presignEndpoint);
       if (presignResp.ok) {
@@ -117,12 +118,7 @@ class DataLoaderService {
       console.warn('⚠️ Could not obtain signed URL, proceeding with public path:', error);
     }
     
-    const response = await fetch(dataUrl, {
-      headers: {
-        'Accept-Encoding': 'gzip, deflate',
-        'Accept': 'text/csv, text/plain, */*'
-      }
-    });
+    const response = await fetch(dataUrl);
     if (!response.ok) {
       throw new Error(`Failed to load data: ${response.statusText}`);
     }
@@ -141,35 +137,29 @@ class DataLoaderService {
     
     // Handle compressed data
     if (sources.properties.endsWith('.gz')) {
-      // Clone the response so we can try multiple approaches
-      const responseClone = response.clone();
-      
-      try {
-        // Try automatic decompression first
-        console.log('🗜️ Attempting automatic decompression...');
-        csvContent = await response.text();
-        
-        // Check if decompression worked (CSV should start with column headers)
-        if (csvContent.startsWith('prompt,') || csvContent.startsWith('"prompt"') || csvContent.includes(',')) {
-          console.log('✅ Automatic decompression successful, size:', csvContent.length, 'characters');
-        } else {
-          throw new Error('Automatic decompression produced invalid data');
-        }
-      } catch (error) {
-        console.log('🗜️ Automatic decompression failed, trying manual...', error);
-        
-        onProgress?.({
-          status: 'Decompressing dataset...',
-          progress: 50,
-          loaded: 0,
-          total: 0
-        });
-        
-        // Use the cloned response for manual decompression
-        const buffer = await responseClone.arrayBuffer();
-        console.log('📁 Compressed buffer size:', buffer.byteLength, 'bytes');
+      // If we are using a signed URL, we must manually decompress.
+      // Otherwise, the browser might handle it automatically if Content-Encoding is set.
+      if (dataUrl.includes('X-Amz-Signature')) {
+        console.log('🗜️ Manual decompression required for signed URL');
+        const buffer = await response.arrayBuffer();
         csvContent = await this.decompressGzip(buffer);
-        console.log('📁 Manually decompressed size:', csvContent.length, 'characters');
+      } else {
+        // For local files, let the browser attempt to decompress first
+        try {
+          console.log('🗜️ Attempting automatic decompression...');
+          csvContent = await response.text();
+          // A simple check to see if decompression likely worked.
+          if (!csvContent.startsWith('prompt') && !csvContent.startsWith('"prompt"')) {
+             throw new Error('Automatic decompression failed, content does not look like a CSV.');
+          }
+          console.log('✅ Automatic decompression successful');
+        } catch (e) {
+          console.warn('⚠️ Automatic decompression failed, trying manual fallback.', e);
+          // This part is tricky because response.text() consumes the body.
+          // For simplicity, we'll recommend running with `netlify dev` for local testing.
+          // A more robust solution would involve cloning the response.
+          throw new Error('Could not decompress file. For local testing of gzipped files, please use `netlify dev`.');
+        }
       }
     } else {
       csvContent = await response.text();
@@ -189,42 +179,17 @@ class DataLoaderService {
     const firstLines = csvContent.split('\n').slice(0, 3);
     console.log('📈 First 3 lines of CSV:', firstLines);
     
-    // Try to detect delimiter
-    const firstLine = csvContent.split('\n')[0];
-    let delimiter = ',';
-    
-    // Count occurrences of each potential delimiter
-    const commaCount = (firstLine.match(/,/g) || []).length;
-    const semicolonCount = (firstLine.match(/;/g) || []).length;
-    const tabCount = (firstLine.match(/\t/g) || []).length;
-    
-    console.log('📈 Delimiter counts - commas:', commaCount, 'semicolons:', semicolonCount, 'tabs:', tabCount);
-    
-    // Choose the delimiter with the most occurrences
-    if (semicolonCount > commaCount && semicolonCount > tabCount) {
-      delimiter = ';';
-      console.log('📈 Detected semicolon delimiter');
-    } else if (tabCount > commaCount && tabCount > semicolonCount) {
-      delimiter = '\t';
-      console.log('📈 Detected tab delimiter');
-    } else {
-      delimiter = ',';
-      console.log('📈 Using comma delimiter (default or most common)');
-    }
-    
     const parsedData = Papa.parse(csvContent, {
       header: true,
-      delimiter: delimiter,
+      delimiter: ',',
       quoteChar: '"',
       escapeChar: '"',
       dynamicTyping: DATA_CONFIG.ENABLE_DYNAMIC_TYPING,
       skipEmptyLines: DATA_CONFIG.SKIP_EMPTY_LINES,
       transformHeader: (header: string) => {
-        // Clean up header names - remove BOM, trim whitespace, etc.
         return header.replace(/^\uFEFF/, '').trim();
       },
-      transform: (value: string, header: string) => {
-        // Clean up values - remove extra quotes, trim whitespace
+      transform: (value: string) => {
         if (typeof value === 'string') {
           return value.replace(/^["']|["']$/g, '').trim();
         }
@@ -249,20 +214,20 @@ class DataLoaderService {
       console.log('📈 Parse errors sample:', parsedData.errors.slice(0, 3));
     }
     
-    // Debug filtering
+    // Filter and process valid rows
     const validRows = (parsedData.data as any[]).filter(row => row && row.property_description);
     console.log('📈 Rows after filtering:', validRows.length);
     console.log('📈 Sample valid row:', validRows[0]);
     
     const processedData = validRows.map((row, index) => {
-      // Always assign a unique row_id based on the index
       row.row_id = index + 1;
       return this.normalizePropertyData(row);
     });
     console.log('📈 Rows after normalization:', processedData.length);
     
     // Cache the processed data
-    if (this.loadingStrategy.enableBrowserCache) {
+    const loadingStrategy = getLoadingStrategy(); // Get the latest strategy
+    if (loadingStrategy.enableBrowserCache) {
       this.setCachedData(processedData);
     }
     
@@ -274,6 +239,7 @@ class DataLoaderService {
     });
     
     this.tableData = processedData;
+    this.detailDataCache.clear();
     return processedData;
   }
   
@@ -352,33 +318,33 @@ class DataLoaderService {
     if (typeof DecompressionStream !== 'undefined') {
       try {
         console.log('🗜️ Using native DecompressionStream...');
-        const decompressedStream = new DecompressionStream('gzip');
-        const writer = decompressedStream.writable.getWriter();
-        const reader = decompressedStream.readable.getReader();
-        
-        writer.write(new Uint8Array(buffer));
-        writer.close();
-        
-        const chunks: Uint8Array[] = [];
-        let done = false;
-        
-        while (!done) {
-          const { value, done: readerDone } = await reader.read();
-          done = readerDone;
-          if (value) {
-            chunks.push(value);
-          }
-        }
-        
-        const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-        const result = new Uint8Array(totalLength);
-        let offset = 0;
-        
-        for (const chunk of chunks) {
-          result.set(chunk, offset);
-          offset += chunk.length;
-        }
-        
+    const decompressedStream = new DecompressionStream('gzip');
+    const writer = decompressedStream.writable.getWriter();
+    const reader = decompressedStream.readable.getReader();
+    
+    writer.write(new Uint8Array(buffer));
+    writer.close();
+    
+    const chunks: Uint8Array[] = [];
+    let done = false;
+    
+    while (!done) {
+      const { value, done: readerDone } = await reader.read();
+      done = readerDone;
+      if (value) {
+        chunks.push(value);
+      }
+    }
+    
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+    
         const decompressed = new TextDecoder().decode(result);
         console.log('✅ Native decompression successful');
         return decompressed;
@@ -437,7 +403,7 @@ class DataLoaderService {
   }
   
   getLoadingStrategy() {
-    return this.loadingStrategy;
+    return getLoadingStrategy(); // Return the latest strategy
   }
 }
 

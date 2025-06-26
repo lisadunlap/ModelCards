@@ -18,10 +18,15 @@
 // back to the original relative paths in /public.
 // -----------------------------------------------------------------------------
 
-const CDN_BASE = import.meta.env.VITE_DATA_CDN_BASE ?? '';
+// Force CDN_BASE to be empty for local development
+const CDN_BASE = '';
 
-// Helper to prefix a path with the CDN base only when the base is defined
-const cdnPath = (relativePath: string) => (CDN_BASE ? `${CDN_BASE}${relativePath}` : relativePath);
+// Helper to prefix a path with the CDN base only when the base is defined,
+// otherwise use local public directory
+const cdnPath = (relativePath: string) => {
+  // For local development, ensure we're using the public directory
+  return relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
+};
 
 export const DATA_SOURCES = {
   // Main CSV files for model properties - Multiple options
@@ -61,9 +66,9 @@ export const DATA_CONFIG = {
   SKIP_EMPTY_LINES: true,
   
   // File format settings
-  USE_COMPRESSED_DATA: true, // Use compressed file (.gz) - recommended for performance
-  USE_PARQUET: false, // Toggle between Parquet and CSV for embeddings
-  SELECTED_PROPERTY_FILE: 'DBSCAN_HIERARCHICAL', // Default selection
+  USE_COMPRESSED_DATA: true, // Re-enable compression
+  USE_PARQUET: false,
+  SELECTED_PROPERTY_FILE: 'DBSCAN_HIERARCHICAL',
   
   // Parquet-specific settings (for embeddings)
   PARQUET_BATCH_SIZE: 1000, // Process Parquet in batches for memory efficiency
