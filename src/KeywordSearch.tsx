@@ -270,7 +270,7 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
     return Array.from(new Set(data.map(item => item.model).filter(model => model && model !== 'Unknown')));
   }, [data]);
 
-  const absoluteCountTooltip = "Shows the propensity (percentage of battles) where each model exhibited properties from this cluster. Higher percentages indicate the model is more likely to show this type of behavior.";
+  const absoluteCountTooltip = "Shows the propensity (percentage of battles) where each model exhibited properties from this cluster. Higher percentages indicate the model is more likely to show this type of behavior. The bars are dynamically scaled for each cluster to best show relative differences.";
 
   return (
     <div className="space-y-6">
@@ -364,6 +364,8 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
 
             const topModels = modelDistribution.slice(0, 3);
             const remainingCount = modelDistribution.length - 3;
+            const maxPercentage = modelDistribution.reduce((max, item) => Math.max(max, item.percentage), 0);
+            const chartMax = Math.max(1, Math.ceil(maxPercentage));
 
             return (
               <div key={cluster.clusterName} className="bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow">
@@ -463,11 +465,16 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
 
                     {/* All models distribution */}
                     <div>
-                      <div className="flex items-center space-x-2 mb-3">
-                        <h5 className="text-sm font-medium text-gray-900">
-                          Model Distribution ({modelDistribution.length} models)
-                        </h5>
-                        <InfoTooltip content={absoluteCountTooltip} iconClassName="h-3 w-3" />
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center space-x-2">
+                          <h5 className="text-sm font-medium text-gray-900">
+                            Model Distribution ({modelDistribution.length} models)
+                          </h5>
+                          <InfoTooltip content={absoluteCountTooltip} iconClassName="h-3 w-3" />
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Scale: 0% – {chartMax.toFixed(0)}%
+                        </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {modelDistribution.map((modelDist) => (
@@ -487,7 +494,7 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
                               <div 
                                 className="h-2 rounded-full transition-all duration-300"
                                 style={{ 
-                                  width: `${Math.min(modelDist.percentage, 100)}%`,
+                                  width: `${(modelDist.percentage / chartMax) * 100}%`,
                                   backgroundColor: modelDist.colors.chartColor
                                 }}
                               ></div>

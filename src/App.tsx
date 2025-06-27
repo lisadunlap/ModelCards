@@ -502,6 +502,7 @@ const ModelDifferenceAnalyzer = () => {
           {selectedView === 'summaries' && propertyData.length > 0 && (
             <ModelSummaries 
               data={propertyData} 
+              onViewResponse={handleViewProperty}
             />
           )}
 

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { Users, TrendingUp, BarChart3, ChevronDown, ChevronRight } from 'lucide-react';
+import { Eye, TrendingUp, BarChart3, ChevronDown, ChevronRight } from 'lucide-react';
 import { getModelColor } from './config/modelColors';
 import InfoTooltip from './components/InfoTooltip.tsx';
 
@@ -29,6 +29,7 @@ interface PropertyData {
 
 interface ModelSummariesProps {
   data: PropertyData[];
+  onViewResponse?: (item: PropertyData) => void;
 }
 
 interface ClusterSummary {
@@ -81,7 +82,7 @@ const getStyleFromTailwind = (bgClass: string, textClass: string) => {
   };
 };
 
-const ModelSummaries: React.FC<ModelSummariesProps> = ({ data }) => {
+const ModelSummaries: React.FC<ModelSummariesProps> = ({ data, onViewResponse }) => {
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [isAccordionOpen, setIsAccordionOpen] = useState(false);
   const [isParametersAccordionOpen, setIsParametersAccordionOpen] = useState(false);
@@ -132,6 +133,21 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data }) => {
   const handleDeselectAll = useCallback(() => {
     setSelectedModels([]);
   }, []);
+
+  const handleClusterClick = useCallback((clusterName: string, modelName: string) => {
+    if (!onViewResponse) return;
+
+    const matchingItems = data.filter(item => 
+      item.property_description_fine_cluster_label === clusterName && item.model === modelName
+    );
+
+    if (matchingItems.length > 0) {
+      const randomItem = matchingItems[Math.floor(Math.random() * matchingItems.length)];
+      onViewResponse(randomItem);
+    } else {
+      console.warn(`Could not find any matching items for cluster "${clusterName}" and model "${modelName}"`);
+    }
+  }, [data, onViewResponse]);
 
   const modelSummaries = useMemo(() => {
     // Filter data to only include battles where both participants are selected
@@ -472,11 +488,16 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data }) => {
               ) : (
                 <div className="space-y-3">
                   {summary.topClusters.map((cluster, clusterIndex) => (
-                    <div key={cluster.clusterName} className="p-3 bg-gray-50 rounded-lg border border-gray-100 hover:bg-gray-100 transition-colors">
-                      <div className="mb-2">
-                        <h4 className="text-base font-semibold text-gray-900 leading-relaxed mb-1">
+                    <div 
+                      key={cluster.clusterName} 
+                      className="p-3 bg-gray-50 rounded-lg border border-gray-100 hover:bg-gray-100 transition-colors cursor-pointer"
+                      onClick={() => handleClusterClick(cluster.clusterName, summary.modelName)}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <h4 className="text-base font-semibold text-gray-900 leading-relaxed mb-1 flex-1">
                           {cluster.clusterName}
                         </h4>
+                        <Eye className="h-4 w-4 text-gray-400 flex-shrink-0 ml-2" />
                       </div>
                       
                       <div className="text-xs text-gray-600 space-y-1">
