@@ -286,14 +286,14 @@ function performKeywordSearch(data: PropertyData[], request: KeywordSearchReques
     // Calculate relevance score based on cluster name matching
     let relevanceScore = 0;
     
-    // Check cluster name for exact matches (higher weight)
     const clusterWords = clusterName.toLowerCase().split(/\s+/);
-    const queryWords = query.split(/\s+/);
     
-    queryWords.forEach(queryWord => {
+    queryTerms.forEach(queryWord => {
       clusterWords.forEach(clusterWord => {
-        if (clusterWord.includes(queryWord) || queryWord.includes(clusterWord)) {
-          relevanceScore += 10; // High score for cluster name matches
+        if (clusterWord === queryWord) {
+          relevanceScore += 10; // Strong match for exact word
+        } else if (clusterWord.includes(queryWord) || queryWord.includes(clusterWord)) {
+          relevanceScore += 5; // Weaker match for substrings
         }
       });
     });

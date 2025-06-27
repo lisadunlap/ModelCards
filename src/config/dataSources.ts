@@ -40,7 +40,7 @@ export const DATA_SOURCES = {
       description: 'Running a ton of models on 500 different arena prompt (not real arena battles)'
     },
     ARENA_COMPARISON: {
-      path: cdnPath('/arena_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz'),
+      path: cdnPath('/arena_llm_reduced_labels.csv.gz'),
       label: 'Actual Arena Battles',
       description: 'Chatbot Arena model comparison with HDBSCAN clustering'
     },

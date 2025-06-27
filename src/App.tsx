@@ -80,23 +80,29 @@ const ModelDifferenceAnalyzer = () => {
         setLoadingProgress(progress);
       });
       
-      console.log('✅ Data loaded successfully. Final count:', processedProperties.length);
+      console.log('✅ Data loaded successfully. Original count:', processedProperties.length);
+
+      // Data preprocessing: remove outliers
+      const filteredProperties = processedProperties.filter(
+        p => p.property_description_fine_cluster_label !== "Outliers"
+      );
+      console.log(`✅ Filtered out ${processedProperties.length - filteredProperties.length} outlier rows. New count: ${filteredProperties.length}`);
       
       // Debug: Show all unique models found
       const allModels = Array.from(new Set([
-        ...processedProperties.map(p => p.model).filter(name => name && name !== 'Unknown')
+        ...filteredProperties.map(p => p.model).filter(name => name && name !== 'Unknown')
       ]));
       
       console.log('🎯 All unique models found:', allModels);
       console.log('📊 Total unique models:', allModels.length);
       
-      setPropertyData(processedProperties);
+      setPropertyData(filteredProperties);
       
       // Initialize global model colors
       const allUniqueModels = Array.from(new Set([
-        ...processedProperties.map(p => p.model).filter(name => name && name !== 'Unknown'),
-        ...processedProperties.map(p => p.model_1_name).filter(name => name && name !== 'Unknown' && name !== ''),
-        ...processedProperties.map(p => p.model_2_name).filter(name => name && name !== 'Unknown' && name !== ''),
+        ...filteredProperties.map(p => p.model).filter(name => name && name !== 'Unknown'),
+        ...filteredProperties.map(p => p.model_1_name).filter(name => name && name !== 'Unknown' && name !== ''),
+        ...filteredProperties.map(p => p.model_2_name).filter(name => name && name !== 'Unknown' && name !== ''),
       ]));
       initializeModelColors(allUniqueModels);
       

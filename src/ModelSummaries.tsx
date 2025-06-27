@@ -237,8 +237,8 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data }) => {
             const distinctiveness = avgOthersPropensity > 0 ? propensity / avgOthersPropensity : propensity * 10;
             
             // Only include clusters where this model is significantly more distinctive
-            // (at least 1.5x higher propensity than average of others, or absolute propensity > 2%)
-            if (distinctiveness >= 1.5 || propensity >= 0.02) {
+            // (at least 1.5x higher propensity than average of others)
+            if (distinctiveness >= 1.5) {
               clusterSummaries.push({
                 clusterName,
                 totalItems: totalClusterBattles.size, // Total unique battles in this cluster

@@ -85,7 +85,7 @@ const getStyleFromTailwind = (bgClass: string, textClass: string) => {
 const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [minSampleThreshold, setMinSampleThreshold] = useState(30);
-  const [searchResults, setSearchResults] = useState<ClusterMatch[]>([]);
+  const [searchResults, setSearchResults] = useState<ClusterMatch[] | null>(null);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
   // Toggle card expansion
@@ -173,14 +173,14 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
       // Calculate relevance score based on cluster name matching
       let relevanceScore = 0;
       
-      // Check cluster name for exact matches (higher weight)
       const clusterWords = clusterName.toLowerCase().split(/\s+/);
-      const queryWords = query.split(/\s+/);
       
-      queryWords.forEach(queryWord => {
+      queryTerms.forEach(queryWord => {
         clusterWords.forEach(clusterWord => {
-          if (clusterWord.includes(queryWord) || queryWord.includes(clusterWord)) {
-            relevanceScore += 10; // High score for cluster name matches
+          if (clusterWord === queryWord) {
+            relevanceScore += 10; // Strong match for exact word
+          } else if (clusterWord.includes(queryWord) || queryWord.includes(clusterWord)) {
+            relevanceScore += 5; // Weaker match for substrings
           }
         });
       });
@@ -257,6 +257,7 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
   // Handle search input
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
+    setSearchResults(null);
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -334,7 +335,7 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
       </div>
 
       {/* Search Results - Compact Design */}
-      {searchResults.length > 0 && (
+      {searchResults && searchResults.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -507,7 +508,7 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
       )}
 
       {/* No Results */}
-      {searchQuery && searchResults.length === 0 && (
+      {searchResults !== null && searchResults.length === 0 && (
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
           <div className="text-gray-500">
             <Search className="h-8 w-8 mx-auto mb-3 opacity-50" />
@@ -520,7 +521,7 @@ const KeywordSearch: React.FC<KeywordSearchProps> = ({ data, onViewResponse }) =
       )}
 
       {/* Empty State */}
-      {!searchQuery && (
+      {searchResults === null && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-8 text-center">
           <div className="text-blue-600">
             <TrendingUp className="h-8 w-8 mx-auto mb-3" />

@@ -55,9 +55,49 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
   const [viewMode, setViewMode] = useState<ViewMode>('selected-models');
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [showDiscrepancyOnly, setShowDiscrepancyOnly] = useState(false);
-  const [discrepancyThreshold, setDiscrepancyThreshold] = useState(2);
+  const [discrepancyThreshold, setDiscrepancyThreshold] = useState(1.0);
   const [showUnexpectedOnly, setShowUnexpectedOnly] = useState(false);
   
+  const dataWithoutOutliers = useMemo(() => {
+    const initialCount = data.length;
+    const filtered = data.filter(
+      p => p.property_description_coarse_cluster_label !== "Outliers"
+    );
+    if (initialCount > filtered.length) {
+      console.log(`[InteractivePropertyChart] Filtered out ${initialCount - filtered.length} coarse cluster outlier rows. New count: ${filtered.length}`);
+    }
+    return filtered;
+  }, [data]);
+
+  const modelTotalBattleCounts = useMemo(() => {
+    const conversationMap = new Map<string, PropertyData>();
+    dataWithoutOutliers.forEach(item => {
+      const conversationKey = `${item.prompt}|||${item.differences}`;
+      if (!conversationMap.has(conversationKey)) {
+        conversationMap.set(conversationKey, item);
+      }
+    });
+    const uniqueConversations = Array.from(conversationMap.values());
+    
+    const modelBattleCounts = new Map<string, number>();
+    uniqueConversations.forEach(conversation => {
+      if (conversation.model_1_name && conversation.model_1_name !== 'Unknown') {
+        modelBattleCounts.set(
+          conversation.model_1_name, 
+          (modelBattleCounts.get(conversation.model_1_name) || 0) + 1
+        );
+      }
+      if (conversation.model_2_name && conversation.model_2_name !== 'Unknown') {
+        modelBattleCounts.set(
+          conversation.model_2_name, 
+          (modelBattleCounts.get(conversation.model_2_name) || 0) + 1
+        );
+      }
+    });
+    console.log('📊 Memoized global model battle counts:', Array.from(modelBattleCounts.entries()).slice(0, 5));
+    return modelBattleCounts;
+  }, [dataWithoutOutliers]);
+
   // Add state for group by prompt functionality
   const [groupByPrompt, setGroupByPrompt] = useState(false);
   const [expandedPrompts, setExpandedPrompts] = useState<Set<string>>(new Set());
@@ -67,7 +107,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
 
   // Get unique model names from the data
   const modelNames = useMemo(() => {
-    const uniqueModels = Array.from(new Set(data.map(item => item.model)))
+    const uniqueModels = Array.from(new Set(dataWithoutOutliers.map(item => item.model)))
       .filter(model => {
         // Filter out invalid model names
         if (!model || typeof model !== 'string') return false;
@@ -90,7 +130,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     
     console.log(`Found ${uniqueModels.length} valid model names:`, uniqueModels);
     return uniqueModels.sort();
-  }, [data]);
+  }, [dataWithoutOutliers]);
 
   // Initialize selectedModels to all models by default (except "Unknown")
   useEffect(() => {
@@ -148,8 +188,9 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
   }, []);
 
   // Calculate chart data based on current drill level (memoized for performance)
-  const chartData = useMemo(() => {
-    let filteredData = data;
+  // Step 1: Calculate base chart data before any discrepancy filtering is applied
+  const baseChartData = useMemo(() => {
+    let filteredData = dataWithoutOutliers;
 
     // Apply filters based on drill state
     if (drillState.coarseCluster) {
@@ -200,25 +241,8 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     const uniqueConversations = Array.from(conversationMap.values());
     console.log('📊 Unique conversations after deduplication:', uniqueConversations.length);
 
-    // Step 2: For each model, calculate total battles participated in
-    const modelBattleCounts = new Map<string, number>();
-    uniqueConversations.forEach(conversation => {
-      // Each conversation involves exactly 2 models
-      if (conversation.model_1_name && conversation.model_1_name !== 'Unknown') {
-        modelBattleCounts.set(
-          conversation.model_1_name, 
-          (modelBattleCounts.get(conversation.model_1_name) || 0) + 1
-        );
-      }
-      if (conversation.model_2_name && conversation.model_2_name !== 'Unknown') {
-        modelBattleCounts.set(
-          conversation.model_2_name, 
-          (modelBattleCounts.get(conversation.model_2_name) || 0) + 1
-        );
-      }
-    });
-    console.log('📊 Model battle counts:', Array.from(modelBattleCounts.entries()).slice(0, 5));
-
+    // Step 2: For each model, calculate total battles participated in - This is now done globally above
+    
     // Step 3: Group conversations by cluster/property and calculate proportions
     const clusterBattles = new Map<string, Map<string, Set<string>>>();
     
@@ -276,7 +300,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       // Calculate proportions for each model
       modelBattles.forEach((battleSet, modelName) => {
         const battlesWithProperty = battleSet.size;
-        const totalBattles = modelBattleCounts.get(modelName) || 0;
+        const totalBattles = modelTotalBattleCounts.get(modelName) || 0;
         
         if (totalBattles > 0) {
           const proportion = (battlesWithProperty / totalBattles) * 100; // Convert to percentage
@@ -301,36 +325,115 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       chartEntries.push(entry);
     });
 
-    console.log('📈 Chart Entries Count:', chartEntries.length);
+    console.log('📈 Base Chart Entries Count:', chartEntries.length);
+    return chartEntries;
+  }, [dataWithoutOutliers, drillState, activeModels, viewMode, showUnexpectedOnly, filterBattleModels, selectedModels, modelTotalBattleCounts]);
+
+  // Step 2: Calculate the dynamic range for the discrepancy slider based on the data
+  const cvDiscrepancyStats = useMemo(() => {
+    if (baseChartData.length === 0) {
+      return { min: 0, max: 2, step: 0.1, hasData: false };
+    }
+
+    const allCVs = baseChartData
+      .map(entry => {
+        const modelPercentages = activeModels.map(model => entry[`${model}_percentage`] || 0);
+        if (modelPercentages.length < 2) return 0;
+        
+        const totalPercentage = modelPercentages.reduce((sum, p) => sum + p, 0);
+        if (totalPercentage === 0) return 0;
+
+        const mean = totalPercentage / modelPercentages.length;
+        if (mean === 0) return 0;
+
+        const stddev = Math.sqrt(
+          modelPercentages.map(p => Math.pow(p - mean, 2)).reduce((sum, v) => sum + v, 0) / modelPercentages.length
+        );
+        const cv = stddev / mean;
+        return cv;
+      })
+      .filter(cv => cv > 0 && isFinite(cv));
+
+    if (allCVs.length === 0) {
+      return { min: 0, max: 2, step: 0.1, hasData: false };
+    }
+
+    const min = Math.min(...allCVs);
+    const max = Math.max(...allCVs);
+
+    const sliderMin = Math.floor(min * 100) / 100;
+    const sliderMax = Math.ceil(max * 100) / 100;
+    
+    const step = (sliderMax - sliderMin) > 0 ? (sliderMax - sliderMin) / 100 : 0.01;
+
+    return { min: sliderMin, max: sliderMax, step: Math.max(step, 0.01), hasData: true };
+  }, [baseChartData, activeModels]);
+
+  // Step 3: Ensure the slider's value is valid when the range changes
+  useEffect(() => {
+    if (cvDiscrepancyStats.hasData) {
+      setDiscrepancyThreshold(prev => Math.max(cvDiscrepancyStats.min, Math.min(prev, cvDiscrepancyStats.max)));
+    }
+  }, [cvDiscrepancyStats]);
+  
+  // Step 4: Apply the discrepancy filter to get the final chart data
+  const chartData = useMemo(() => {
+    let chartEntries = [...baseChartData];
+
+    // Filter out any cluster where the top model has fewer than 10 instances, to reduce noise.
+    const countBeforeMinFilter = chartEntries.length;
+    chartEntries = chartEntries.filter(entry => {
+      if (activeModels.length === 0) return false;
+      const maxCount = Math.max(...activeModels.map(model => entry[`${model}_battle_count`] || 0));
+      return maxCount >= 10;
+    });
+    if (countBeforeMinFilter > chartEntries.length) {
+      console.log(`📊 Filtered out ${countBeforeMinFilter - chartEntries.length} categories where max model count was < 10.`);
+    }
 
     // Store total before filtering for comparison
     const totalBeforeFilter = chartEntries.length;
 
     // Apply discrepancy filtering if enabled
-    if (showDiscrepancyOnly && activeModels.length >= 2) {
+    if (showDiscrepancyOnly && activeModels.length >= 2 && drillState.level === 'coarse') {
       chartEntries = chartEntries.filter(entry => {
-        // Get all model counts for this category
+        // Get model counts to ensure we are not looking at a very sparse category
         const modelCounts = activeModels.map(model => entry[`${model}_battle_count`] || 0);
-        
-        // Remove zero counts for ratio calculation
-        const nonZeroCounts = modelCounts.filter(count => count > 0);
-        
-        // Need at least 2 models with data to calculate discrepancy
-        if (nonZeroCounts.length < 2) {
-          // Show entries where one model has significant data while others have none
-          const maxCount = Math.max(...modelCounts);
-          return maxCount >= 3; // At least 3 items in one model
+        const totalCount = modelCounts.reduce((sum, count) => sum + count, 0);
+
+        // Don't calculate for very sparse categories to avoid noise
+        if (totalCount < 3) { 
+            return false;
         }
+
+        // Get all model percentages for this category for active models
+        const modelPercentages = activeModels.map(model => entry[`${model}_percentage`] || 0);
         
-        // Calculate the ratio between highest and lowest counts
-        const maxCount = Math.max(...nonZeroCounts);
-        const minCount = Math.min(...nonZeroCounts);
-        const ratio = maxCount / minCount;
+        // We need at least 2 models to have a discrepancy
+        if (modelPercentages.length < 2) {
+          return false;
+        }
+
+        // Calculate Coefficient of Variation (CV) on the propensities (percentages)
+        const totalPercentage = modelPercentages.reduce((sum, p) => sum + p, 0);
+        // If all propensities are 0, there's no discrepancy to show.
+        if (totalPercentage === 0) {
+            return false;
+        }
+
+        const mean = totalPercentage / modelPercentages.length;
+        if (mean === 0) {
+          return false; // No data, no discrepancy
+        }
+        const stddev = Math.sqrt(
+          modelPercentages.map(p => Math.pow(p - mean, 2)).reduce((sum, v) => sum + v, 0) / modelPercentages.length
+        );
+        const cv = stddev / mean;
         
-        // Use the threshold from the slider
+        // Use the threshold from the slider (now representing CV)
         const threshold = discrepancyThreshold;
         
-        return ratio >= threshold;
+        return cv >= threshold;
       });
       
       // Add debugging info to help track filter effectiveness
@@ -345,18 +448,17 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
       console.warn('⚠️ No chart data generated! Check filters and data structure.');
       console.warn('Current drill state:', drillState);
       console.warn('Active models:', activeModels);
-      console.warn('Original data count:', data.length);
-      console.warn('Filtered data count:', filteredData.length);
+      console.warn('Original data count:', dataWithoutOutliers.length);
     }
     
     return finalData;
-  }, [data, drillState, activeModels, viewMode, showDiscrepancyOnly, discrepancyThreshold, showUnexpectedOnly, filterBattleModels, selectedModels]);
+  }, [baseChartData, activeModels, showDiscrepancyOnly, discrepancyThreshold, drillState.level]);
 
   // Generate heatmap data for heatmap view
   const heatmapData = useMemo(() => {
     if (viewMode !== 'heatmap') return [];
     
-    let filteredData = data;
+    let filteredData = dataWithoutOutliers;
     if (drillState.coarseCluster) {
       filteredData = filteredData.filter(item => item.property_description_coarse_cluster_label === drillState.coarseCluster);
     }
@@ -425,11 +527,11 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     });
 
     return heatmapGrid;
-  }, [data, drillState, modelNames, viewMode, showUnexpectedOnly, filterBattleModels, selectedModels]);
+  }, [dataWithoutOutliers, drillState, modelNames, viewMode, showUnexpectedOnly, filterBattleModels, selectedModels]);
 
   // Get filtered data for the table view (memoized and with search)
   const filteredTableData = useMemo(() => {
-    let filteredData = data;
+    let filteredData = dataWithoutOutliers;
     
     if (drillState.coarseCluster) {
       filteredData = filteredData.filter(item => item.property_description_coarse_cluster_label === drillState.coarseCluster);
@@ -488,7 +590,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
     });
     
     return shuffledData;
-  }, [data, drillState, tableSearch, viewMode, activeModels, showUnexpectedOnly, filterBattleModels, selectedModels]);
+  }, [dataWithoutOutliers, drillState, tableSearch, viewMode, activeModels, showUnexpectedOnly, filterBattleModels, selectedModels]);
 
   // Paginated table data
   const paginatedTableData = useMemo(() => {
@@ -852,7 +954,7 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
             {modelNames.length} total models • {activeModels.length} showing
             {showDiscrepancyOnly ? (
               <span className="ml-2 px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-                Showing {chartData.length} categories with discrepancies ≥ {discrepancyThreshold}x ratio
+                Showing {chartData.length} categories with discrepancy ≥ {discrepancyThreshold.toFixed(1)} Coefficient of Variation (CV)
               </span>
             ) : (
               <span> • {chartData.length} categories</span>
@@ -964,20 +1066,21 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
               {showDiscrepancyOnly && (
                 <div>
                   <label className="block text-xs text-gray-600 mb-1">
-                    Minimum ratio (higher/lower): {discrepancyThreshold}x
+                    Minimum Discrepancy (Coefficient of Variation): {discrepancyThreshold.toFixed(1)}
                   </label>
                   <input
                     type="range"
-                    min="1.5"
-                    max="10"
-                    step="0.5"
+                    min={cvDiscrepancyStats.min}
+                    max={cvDiscrepancyStats.max}
+                    step={cvDiscrepancyStats.step}
                     value={discrepancyThreshold}
                     onChange={(e) => setDiscrepancyThreshold(parseFloat(e.target.value))}
                     className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    disabled={!cvDiscrepancyStats.hasData}
                   />
                   <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>1.5x</span>
-                    <span>10x</span>
+                    <span>{cvDiscrepancyStats.min.toFixed(2)}</span>
+                    <span>{cvDiscrepancyStats.max.toFixed(2)}</span>
                   </div>
                 </div>
               )}
@@ -1101,29 +1204,41 @@ const InteractivePropertyChart: React.FC<InteractivePropertyChartProps> = ({
           </div>
           
           {chartData.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-gray-500">
-                <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <h3 className="text-lg font-medium mb-2">No Data Available</h3>
-                <p className="text-sm mb-4">
-                  No data matches the current filters and drill-down selection.
-                  <br />
-                  Try adjusting your filters or navigate back to a higher level.
-                </p>
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-left max-w-md mx-auto">
-                  <h4 className="font-medium text-yellow-800 mb-2">Debugging Information:</h4>
-                  <div className="text-xs text-yellow-700 space-y-1">
-                    <p>• Current level: {drillState.level}</p>
-                    <p>• Coarse cluster: {drillState.coarseCluster || 'None'}</p>
-                    <p>• Fine cluster: {drillState.fineCluster || 'None'}</p>
-                    <p>• Active models: {activeModels.length}</p>
-                    <p>• View mode: {viewMode}</p>
-                    <p>• Show discrepancy only: {showDiscrepancyOnly ? 'Yes' : 'No'}</p>
-                    <p>• Show unexpected only: {showUnexpectedOnly ? 'Yes' : 'No'}</p>
+            drillState.level === 'property' ? (
+              <div className="text-center py-12">
+                <div className="text-gray-500">
+                  <Eye className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <h3 className="text-lg font-medium mb-2">View Conversations</h3>
+                  <p className="text-sm">
+                    Click on conversations in the table below to explore conversations.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="text-gray-500">
+                  <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <h3 className="text-lg font-medium mb-2">No Data Available</h3>
+                  <p className="text-sm mb-4">
+                    No data matches the current filters and drill-down selection.
+                    <br />
+                    Try adjusting your filters or navigate back to a higher level.
+                  </p>
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-left max-w-md mx-auto">
+                    <h4 className="font-medium text-yellow-800 mb-2">Debugging Information:</h4>
+                    <div className="text-xs text-yellow-700 space-y-1">
+                      <p>• Current level: {drillState.level}</p>
+                      <p>• Coarse cluster: {drillState.coarseCluster || 'None'}</p>
+                      <p>• Fine cluster: {drillState.fineCluster || 'None'}</p>
+                      <p>• Active models: {activeModels.length}</p>
+                      <p>• View mode: {viewMode}</p>
+                      <p>• Show discrepancy only: {showDiscrepancyOnly ? 'Yes' : 'No'}</p>
+                      <p>• Show unexpected only: {showUnexpectedOnly ? 'Yes' : 'No'}</p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )
           ) : (
             <ResponsiveContainer width="100%" height={600}>
               <BarChart 
