@@ -334,7 +334,7 @@ const ViewResponses: React.FC<ViewResponsesProps> = ({ data, onViewResponse }) =
                   <div className="p-4">
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       {/* Model 1 Response */}
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex items-center mb-2">
                           <div 
                             className="inline-flex items-center px-2 py-1 rounded text-sm font-medium mr-2"
@@ -358,7 +358,7 @@ const ViewResponses: React.FC<ViewResponsesProps> = ({ data, onViewResponse }) =
                       </div>
 
                       {/* Model 2 Response */}
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex items-center mb-2">
                           <div 
                             className="inline-flex items-center px-2 py-1 rounded text-sm font-medium mr-2"
