@@ -309,7 +309,7 @@ const ModelDifferenceAnalyzer = () => {
           
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">The ULTIMATE Vibe Checker</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Vibe Checker</h1>
               <p className="text-gray-600 mt-1">Analyze and explore properties of generative models</p>
             </div>
             <div className="flex items-center space-x-4 text-sm text-gray-500">

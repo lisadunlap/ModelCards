@@ -493,7 +493,7 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data, onViewResponse })
                       className="p-3 bg-gray-50 rounded-lg border border-gray-100 hover:bg-gray-100 transition-colors cursor-pointer"
                       onClick={() => handleClusterClick(cluster.clusterName, summary.modelName)}
                     >
-                      <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-start justify-between mb-1">
                         <h4 className="text-base font-semibold text-gray-900 leading-snug mb-1 flex-1">
                           {cluster.clusterName}
                         </h4>

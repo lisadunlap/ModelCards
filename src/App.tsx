@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Bot, Database, Brain, X, Eye, ExternalLink, TrendingUp, PenTool, FileSearch, MessageCircle, RefreshCw } from 'lucide-react';
+import { BarChart3, Bot, Database, Brain, X, Eye, ExternalLink, TrendingUp, PenTool, FileSearch, MessageCircle, RefreshCw, Menu, ChevronLeft } from 'lucide-react';
 import InteractivePropertyChart from './InteractivePropertyChart';
 import SemanticSearch from './SemanticSearch';
 import ModelSummaries from './ModelSummaries';
@@ -14,7 +14,7 @@ const ModelDifferenceAnalyzer = () => {
   const [propertyData, setPropertyData] = useState<PropertyData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedView, setSelectedView] = useState<string>('overview');
+  const [selectedView, setSelectedView] = useState<string>('summaries');
   const [loadingProgress, setLoadingProgress] = useState<LoadingProgress>({
     status: 'Starting...',
     progress: 0,
@@ -29,6 +29,9 @@ const ModelDifferenceAnalyzer = () => {
   // Add state for side panel
   const [selectedItem, setSelectedItem] = useState<PropertyData | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Add state for navigation sidebar
+  const [navSidebarOpen, setNavSidebarOpen] = useState(true);
 
   // Add error boundary state
   const [hasRenderError, setHasRenderError] = useState(false);
@@ -220,12 +223,36 @@ const ModelDifferenceAnalyzer = () => {
   }
 
   const navigationItems = [
-    { id: 'overview', label: 'Overview', icon: Database },
-    { id: 'summaries', label: 'Summaries', icon: TrendingUp },
-    { id: 'properties', label: 'Property Analysis', icon: BarChart3 },
-    { id: 'keyword-search', label: 'Keyword Search', icon: FileSearch },
-    // { id: 'search', label: 'Semantic Search', icon: Brain },
-    { id: 'view-responses', label: 'View Responses', icon: MessageCircle }
+    { 
+      id: 'overview', 
+      label: 'Overview', 
+      icon: Database,
+      description: 'Dataset statistics and getting started guide'
+    },
+    { 
+      id: 'summaries', 
+      label: 'Summaries', 
+      icon: TrendingUp,
+      description: 'High-level model behavior patterns and distinctive clusters'
+    },
+    { 
+      id: 'properties', 
+      label: 'Property Analysis', 
+      icon: BarChart3,
+      description: 'Interactive charts for deep-dive property exploration'
+    },
+    { 
+      id: 'keyword-search', 
+      label: 'Keyword Search', 
+      icon: FileSearch,
+      description: 'Find property clusters using keyword search with relevance scoring'
+    },
+    { 
+      id: 'view-responses', 
+      label: 'View Responses', 
+      icon: MessageCircle,
+      description: 'Compare actual model conversations side-by-side'
+    }
   ];
 
   // Get data sources for display
@@ -273,87 +300,89 @@ const ModelDifferenceAnalyzer = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-full mx-auto px-2 py-4">
-          {/* Data Source Selector */}
-          <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <Database className="h-5 w-5 text-blue-600" />
-                <label className="text-sm font-medium text-blue-900">
-                  Data Source:
-                </label>
-                <select
-                  value={selectedDataSource}
-                  onChange={(e) => handleDataSourceChange(e.target.value)}
-                  disabled={loading || isReloading}
-                  className="border border-blue-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {getPropertyFileOptions().map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* Navigation Sidebar */}
+      <div className={`${navSidebarOpen ? 'w-80' : 'w-12'} transition-all duration-300 bg-white shadow-lg border-r flex flex-col`}>
+        {/* Sidebar Header */}
+        <div className="p-4 border-b bg-white">
+          <div className={`flex items-center ${navSidebarOpen ? 'justify-between' : 'justify-center'}`}>
+            {navSidebarOpen && (
+              <div className="text-center flex-1">
+                <h1 className="text-xl font-bold text-purple-900">Vibe Checker</h1>
+                <p className="text-sm text-purple-700 mt-1">Analyze and explore properties of generative models</p>
               </div>
-              
-              <div className="flex items-center space-x-2 text-sm text-blue-700">
-                {isReloading && (
-                  <div className="flex items-center space-x-2">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>Reloading...</span>
-                  </div>
-                )}
-                <span className="text-blue-600">
-                  {getCurrentDataSources().selectedPropertyConfig?.description}
+            )}
+            <button
+              onClick={() => setNavSidebarOpen(!navSidebarOpen)}
+              className="p-2 rounded-lg hover:bg-white/70 transition-colors text-purple-700"
+              title={navSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+            >
+              {navSidebarOpen ? <ChevronLeft className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Data Source Selector */}
+        {navSidebarOpen && (
+          <div className="p-4 bg-green-50 border-b border-green-200">
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Database className="h-4 w-4 text-green-600" />
+                <label className="text-sm font-medium text-green-900">Data Source:</label>
+              </div>
+              <select
+                value={selectedDataSource}
+                onChange={(e) => handleDataSourceChange(e.target.value)}
+                disabled={loading || isReloading}
+                className="w-full border border-green-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {getPropertyFileOptions().map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <div className="flex items-center space-x-2 text-xs text-green-600">
+                {isReloading && <RefreshCw className="h-3 w-3 animate-spin" />}
+                <span>{getCurrentDataSources().selectedPropertyConfig?.description}</span>
+              </div>
+              <div className="flex items-center space-x-2 text-xs text-gray-500">
+                <span>{propertyData.length.toLocaleString()} properties</span>
+                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full font-medium">
+                  Dataset Loaded
                 </span>
               </div>
             </div>
           </div>
-          
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">The ULTIMATE Vibe Checker</h1>
-              <p className="text-gray-600 mt-1">Analyze and explore properties of generative models</p>
-            </div>
-            <div className="flex items-center space-x-4 text-sm text-gray-500">
-              <span>{propertyData.length.toLocaleString()} properties</span>
-              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                Dataset Loaded
-              </span>
-            </div>
-          </div>
+        )}
+
+        {/* Navigation Items */}
+        <div className="flex-1 p-3 space-y-2">
+          {navigationItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setSelectedView(item.id)}
+                title={navSidebarOpen ? item.description : `${item.label} - ${item.description}`}
+                className={`w-full flex items-center space-x-3 px-3 py-3 rounded-lg font-medium transition-all duration-200 hover:shadow-sm ${
+                  selectedView === item.id
+                    ? 'bg-blue-100 text-blue-700 shadow-sm border border-blue-200'
+                    : 'text-gray-700 hover:text-blue-700 hover:bg-gray-50'
+                } ${!navSidebarOpen ? 'justify-center' : ''}`}
+              >
+                <Icon className="h-5 w-5 flex-shrink-0" />
+                {navSidebarOpen && <span className="text-left">{item.label}</span>}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <div className="max-w-full mx-auto px-2 py-6">
-        {/* Navigation Tabs */}
-        <div className="bg-white rounded-lg shadow-sm border mb-6">
-          <nav className="flex space-x-8 px-6 py-4">
-            {navigationItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setSelectedView(item.id)}
-                  className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                    selectedView === item.id
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
-                >
-                  <Icon className="h-5 w-5" />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* Content */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Main Content */}
+        <div className="flex-1 p-6 bg-white m-4 rounded-lg shadow-sm border overflow-auto">
           {selectedView === 'overview' && (
             <div>
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Data Overview</h2>
