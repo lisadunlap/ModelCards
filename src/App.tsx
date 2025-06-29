@@ -276,7 +276,7 @@ const ModelDifferenceAnalyzer = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="max-w-full mx-auto px-2 py-4">
           {/* Data Source Selector */}
           <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
             <div className="flex items-center justify-between">
@@ -328,7 +328,7 @@ const ModelDifferenceAnalyzer = () => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="max-w-full mx-auto px-2 py-6">
         {/* Navigation Tabs */}
         <div className="bg-white rounded-lg shadow-sm border mb-6">
           <nav className="flex space-x-8 px-6 py-4">
