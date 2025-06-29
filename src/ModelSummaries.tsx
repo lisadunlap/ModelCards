@@ -310,7 +310,7 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data, onViewResponse })
     );
   }
 
-  const proportionTooltip = "Shows distinctive clusters where each model has significantly higher propensity than other models (at least 1.5x higher). This highlights what makes each model behaviorally unique.";
+  const proportionTooltip = "Shows distinctive clusters where each model has significantly higher frequency than other models (at least 1.5x higher). This highlights what makes each model behaviorally unique.";
 
   return (
     <div className="space-y-6">
@@ -324,8 +324,8 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data, onViewResponse })
             Top 10 distinctive clusters where each model shows unique behavioral patterns
           </p>
           <div className="mt-2 text-sm text-blue-700 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
-            <strong>Propensity calculation:</strong> For each cluster, propensity shows what percentage of a model's total battles resulted in that behavioral pattern. 
-            For example, 5% propensity means the model exhibited this behavior in 5 out of every 100 battles it participated in.
+            <strong>Frequency calculation:</strong> For each cluster, frequency shows what percentage of a model's total battles resulted in that behavioral pattern. 
+            For example, 5% frequency means the model exhibited this behavior in 5 out of every 100 battles it participated in.
           </div>
         </div>
         <div className="text-sm text-gray-600">
@@ -475,7 +475,7 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data, onViewResponse })
               
               <div className="flex items-center text-sm text-gray-500">
                 <TrendingUp className="h-4 w-4 mr-2 text-gray-400" />
-                <span>Top clusters by propensity</span>
+                <span>Top clusters by frequency</span>
               </div>
             </div>
 
@@ -494,16 +494,16 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data, onViewResponse })
                       onClick={() => handleClusterClick(cluster.clusterName, summary.modelName)}
                     >
                       <div className="flex items-start justify-between mb-2">
-                        <h4 className="text-base font-semibold text-gray-900 leading-relaxed mb-1 flex-1">
+                        <h4 className="text-base font-semibold text-gray-900 leading-snug mb-1 flex-1">
                           {cluster.clusterName}
                         </h4>
                         <Eye className="h-4 w-4 text-gray-400 flex-shrink-0 ml-2" />
                       </div>
                       
-                      <div className="text-xs text-gray-600 space-y-1">
+                      <div className="text-xs text-gray-600 space-y-0.5">
                         <div>
                           <span className="font-medium text-gray-700">
-                            {cluster.percentage.toFixed(1)}% propensity
+                            {cluster.percentage.toFixed(1)}% frequency
                           </span>
                           <span className="ml-2 text-gray-500">
                             ({cluster.modelItems} out of {cluster.totalItems} battles)

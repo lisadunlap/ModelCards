@@ -7,6 +7,25 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="icon" type="image/png" href="/favicon.svg">
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Tailwind inline configuration to use the custom font as default sans
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Nunito"', 'ui-sans-serif', 'system-ui', 'sans-serif']
+            }
+          }
+        }
+      }
+    </script>
+    <!-- Slightly increase the global base font size for better readability -->
+    <style>
+      html {
+        font-size: 17px; /* default was 16px */
+      }
+    </style>
 </head>
 <body>
     <div id="root"></div>
