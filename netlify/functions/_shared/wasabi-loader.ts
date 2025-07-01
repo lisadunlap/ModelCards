@@ -27,6 +27,11 @@ export const DATASETS = {
     path: 'datasets/wildbench_full_vibe_results_parsed_processed_hdbscan_clustered.csv.gz',
     label: 'Wildbench Model Comparison',
     description: 'Wildbench model comparison using HELM predictions'
+  },
+  WEBDEV_COMPARISON: {
+    path: 'datasets/webdev_small.csv.gz',
+    label: 'Webdev Arena',
+    description: 'Chatbot Arena (webdev version)'
   }
 } as const;
 

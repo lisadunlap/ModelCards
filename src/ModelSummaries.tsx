@@ -22,8 +22,8 @@ interface PropertyData {
   unexpected_behavior?: string;
   property_description_coarse_cluster_label: string;
   property_description_fine_cluster_label: string;
-  property_description_coarse_cluster_id: number;
-  property_description_fine_cluster_id: number;
+  property_description_coarse_cluster_id?: number;
+  property_description_fine_cluster_id?: number;
   row_id?: number;
 }
 
@@ -113,7 +113,6 @@ const ModelSummaries: React.FC<ModelSummariesProps> = ({ data, onViewResponse })
       setSelectedModels(allModelNames);
     }
   }, [allModelNames, selectedModels.length]);
-
   // Handle model selection toggle
   const handleModelToggle = useCallback((model: string) => {
     setSelectedModels(prev => {
