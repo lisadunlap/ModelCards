@@ -13,7 +13,6 @@ export interface DemoProperty {
   model_1_name: string;
   model_2_name: string;
   differences: string;
-  parsed_differences: string;
   model: string;
   property_description: string;
   category: string;
@@ -37,7 +36,6 @@ export const DEMO_PROPERTIES: DemoProperty[] = [
     model_1_name: "GPT-4",
     model_2_name: "Claude-3",
     differences: "Different levels of detail and scientific terminology",
-    parsed_differences: "Model 1 uses more technical language while Model 2 is more accessible",
     model: "GPT-4",
     property_description: "Provides detailed scientific explanations with appropriate terminology",
     category: "Scientific Accuracy",
@@ -58,7 +56,6 @@ export const DEMO_PROPERTIES: DemoProperty[] = [
     model_1_name: "GPT-4",
     model_2_name: "Claude-3",
     differences: "Different narrative styles and creative approaches",
-    parsed_differences: "Model 1 uses fairy tale structure, Model 2 uses sci-fi setting",
     model: "Claude-3",
     property_description: "Shows creativity and emotional depth in storytelling",
     category: "Creative Writing",
@@ -79,7 +76,6 @@ export const DEMO_PROPERTIES: DemoProperty[] = [
     model_1_name: "GPT-4",
     model_2_name: "Claude-3",
     differences: "Both models refuse but with different phrasing",
-    parsed_differences: "Similar refusal patterns with slight variation in explanation",
     model: "GPT-4",
     property_description: "Appropriately refuses to provide harmful or illegal information",
     category: "Safety",
@@ -100,7 +96,6 @@ export const DEMO_PROPERTIES: DemoProperty[] = [
     model_1_name: "GPT-4",
     model_2_name: "Claude-3",
     differences: "Minimal differences in basic arithmetic",
-    parsed_differences: "Both provide correct answer with slightly different phrasing",
     model: "Claude-3",
     property_description: "Handles basic mathematical operations correctly",
     category: "Mathematical Reasoning",
@@ -121,7 +116,6 @@ export const DEMO_PROPERTIES: DemoProperty[] = [
     model_1_name: "GPT-4",
     model_2_name: "Claude-3",
     differences: "Different joke styles and humor approaches",
-    parsed_differences: "Model 1 uses wordplay, Model 2 uses visual humor",
     model: "GPT-4",
     property_description: "Demonstrates humor and wordplay capabilities",
     category: "Conversational",

@@ -1,13 +1,14 @@
 import type { Handler, HandlerEvent, HandlerContext, HandlerResponse } from '@netlify/functions';
 
 interface PropertyData {
+  question_id: string;
   prompt: string;
   model_1_response: string;
   model_2_response: string;
   model_1_name: string;
   model_2_name: string;
   differences: string;
-  parsed_differences: string;
+  parsed_differences?: string;
   parse_error?: string;
   model: string;
   property_description: string;
@@ -280,7 +281,6 @@ function generateModelSummaries(data: PropertyData[], request: ModelSummariesReq
     }
     
     const clusterMap = clusterBattles.get(clusterKey)!;
-    const conversationKey = `${conversation.prompt}|||${conversation.differences}`;
     
     // For each battle, track which models participated
     const modelWithProperty = conversation.model;
@@ -291,7 +291,12 @@ function generateModelSummaries(data: PropertyData[], request: ModelSummariesReq
       if (!clusterMap.has(modelWithProperty)) {
         clusterMap.set(modelWithProperty, new Set());
       }
-      clusterMap.get(modelWithProperty)!.add(conversationKey);
+      
+      // NEW: Use [question_id, model] as the deduplication key within each cluster
+      // This ensures that if a model has multiple properties for the same question in this cluster,
+      // they are counted as only one occurrence
+      const deduplicationKey = `${conversation.question_id}|||${modelWithProperty}`;
+      clusterMap.get(modelWithProperty)!.add(deduplicationKey);
     }
   });
 

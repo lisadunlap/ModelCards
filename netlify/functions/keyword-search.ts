@@ -7,7 +7,7 @@ interface PropertyData {
   model_1_name: string;
   model_2_name: string;
   differences: string;
-  parsed_differences: string;
+  parsed_differences?: string;
   parse_error?: string;
   model: string;
   property_description: string;

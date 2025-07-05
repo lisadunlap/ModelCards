@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { BarChart3, Bot, Database, Brain, X, Eye, ExternalLink, TrendingUp, PenTool, FileSearch, MessageCircle, RefreshCw, Menu, ChevronLeft } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { BarChart3, Bot, Database, Brain, X, Eye, ExternalLink, TrendingUp, PenTool, FileSearch, MessageCircle, RefreshCw, Menu, ChevronLeft, Home, Search, Users, MessageSquare, Zap, ChevronDown, ChevronRight, Filter, Grid } from 'lucide-react';
 import InteractivePropertyChart from './InteractivePropertyChart';
 import SemanticSearch from './SemanticSearch';
 import ModelSummaries from './ModelSummaries';
 import KeywordSearch from './KeywordSearch';
 import ViewResponses from './ViewResponses';
 import ContentRenderer from './components/ContentRenderer';
+import ExampleCard from './components/ExampleCard';
 import { getCurrentDataSources, validateDataSources, DATA_CONFIG, getPropertyFileOptions, setSelectedPropertyFile } from './config/dataSources';
 import { initializeModelColors, getModelColor } from './config/modelColors';
 import { dataLoader, PropertyData, LoadingProgress } from './services/dataLoader';
@@ -279,6 +280,7 @@ const ModelDifferenceAnalyzer = () => {
         console.log('🔍 Detailed item model (after loading):', detailedItem?.model);
         console.log('🔍 Detailed item property_description (first 100 chars):', detailedItem?.property_description?.substring(0, 100));
         console.log('🔍 Detailed item has model_1_response:', !!detailedItem?.model_1_response);
+        console.log('🔍 Detailed item has model_2_response:', !!detailedItem?.model_2_response);
         console.log('🔍 Are items the same object?', detailedItem === item);
         setSelectedItem(detailedItem || item);
       } catch (error) {
@@ -287,7 +289,7 @@ const ModelDifferenceAnalyzer = () => {
       }
     } else {
       console.log('🔍 No row_id found, using original item');
-    setSelectedItem(item);
+      setSelectedItem(item);
     }
     
     console.log('🔍 Opening sidebar');
@@ -551,178 +553,12 @@ const ModelDifferenceAnalyzer = () => {
         </div>
       </div>
 
-      {/* Side Panel */}
-      {sidebarOpen && selectedItem && (
-        <div className="fixed inset-0 overflow-hidden z-50">
-          <div className="absolute inset-0 overflow-hidden">
-            {/* Backdrop */}
-            <div 
-              className="absolute inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-              onClick={closeSidebar}
-            ></div>
-            
-            {/* Panel */}
-            <section className="absolute inset-y-0 right-0 pl-8 max-w-full flex">
-              <div className="relative w-screen max-w-6xl">
-                <div className="h-full flex flex-col bg-white shadow-xl overflow-y-scroll">
-                  {/* Header */}
-                  <div className="px-4 py-6 bg-gray-50 sm:px-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center space-x-3">
-                        <Eye className="h-6 w-6 text-gray-400" />
-                        <h2 className="text-lg font-medium text-gray-900">
-                          Property Details
-                        </h2>
-                      </div>
-                      <div className="ml-3 h-7 flex items-center">
-                        <button
-                          onClick={closeSidebar}
-                          className="bg-white rounded-md text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <span className="sr-only">Close panel</span>
-                          <X className="h-6 w-6" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 px-4 py-6 sm:px-6">
-                    {selectedItem ? (
-                    <div className="space-y-6">
-                      {/* Property Details */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-900 mb-1">Model</h4>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getModelColor(selectedItem.model).badgeColor} ${getModelColor(selectedItem.model).textColor}`}>
-                            {selectedItem.model}
-                          </span>
-                        </div>
-                        
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-900 mb-1">Category</h4>
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            {selectedItem.category}
-                          </span>
-                        </div>
-                        
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-900 mb-1">Impact</h4>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            selectedItem.impact === 'High' ? 'bg-red-100 text-red-800' :
-                            selectedItem.impact === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-green-100 text-green-800'
-                          }`}>
-                            {selectedItem.impact}
-                          </span>
-                        </div>
-
-                        {selectedItem.type && (
-                          <div>
-                            <h4 className="text-sm font-medium text-gray-900 mb-1">Type</h4>
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                              {selectedItem.type}
-                            </span>
-                          </div>
-                        )}
-
-                        {selectedItem.unexpected_behavior && (
-                          <div>
-                            <h4 className="text-sm font-medium text-gray-900 mb-1">Unexpected Behavior</h4>
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              selectedItem.unexpected_behavior.toLowerCase() === 'true' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-                            }`}>
-                              {selectedItem.unexpected_behavior}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div>
-                        <h3 className="text-sm font-medium text-gray-900 mb-2">Property Description</h3>
-                        <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model).backgroundColor} ${getModelColor(selectedItem.model).borderColor}`}>
-                          <ContentRenderer content={selectedItem.property_description} className="!bg-transparent !p-0" />
-                        </div>
-                      </div>
-
-                      {/* Always show prompt section prominently */}
-                      <div>
-                        <h3 className="text-sm font-medium text-gray-900 mb-2">Prompt</h3>
-                        <div className="p-3 rounded-md border-l-4 border-gray-400 bg-gray-50">
-                          {selectedItem.prompt ? (
-                            <ContentRenderer content={selectedItem.prompt} className="!bg-transparent !p-0" />
-                          ) : (
-                            <p className="text-gray-500 italic">No prompt available</p>
-                          )}
-                        </div>
-                      </div>
-
-                      {selectedItem.reason && (
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-900 mb-2">Reason</h3>
-                          <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model).backgroundColor} ${getModelColor(selectedItem.model).borderColor}`}>
-                            <ContentRenderer content={selectedItem.reason} className="!bg-transparent !p-0" />
-                          </div>
-                        </div>
-                      )}
-
-                      {(selectedItem.model_1_response || selectedItem.model_2_response) && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {selectedItem.model_1_response && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">
-                                {selectedItem.model_1_name} Response
-                              </h3>
-                              <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_1_name || 'Model 1').backgroundColor} ${getModelColor(selectedItem.model_1_name || 'Model 1').borderColor}`}>
-                                <ContentRenderer content={selectedItem.model_1_response} className="!bg-transparent !p-0" />
-                              </div>
-                            </div>
-                          )}
-                          
-                          {selectedItem.model_2_response && (
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-900 mb-2">
-                                {selectedItem.model_2_name} Response
-                              </h3>
-                              <div className={`p-3 rounded-md border-l-4 ${getModelColor(selectedItem.model_2_name || 'Model 2').backgroundColor} ${getModelColor(selectedItem.model_2_name || 'Model 2').borderColor}`}>
-                                <ContentRenderer content={selectedItem.model_2_response} className="!bg-transparent !p-0" />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {selectedItem.differences && (
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-900 mb-2">Differences</h3>
-                          <ContentRenderer content={selectedItem.differences} />
-                        </div>
-                      )}
-
-                      {selectedItem.parsed_differences && (
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-900 mb-2">Parsed Differences</h3>
-                          <ContentRenderer content={selectedItem.parsed_differences} />
-                        </div>
-                      )}
-                    </div>
-                    ) : (
-                      <div className="space-y-6">
-                        {/* Placeholder for loading */}
-                        <div className="animate-pulse">
-                          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                          <div className="h-4 bg-gray-200 rounded w-1/3"></div>
-                          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </section>
-          </div>
-        </div>
-      )}
+      {/* Example Card */}
+      <ExampleCard 
+        item={selectedItem}
+        isOpen={sidebarOpen}
+        onClose={closeSidebar}
+      />
     </div>
   );
 };

@@ -3,30 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { ChevronRight, ArrowLeft, Eye, Home, ChevronLeft, ChevronDown, Filter, BarChart3, Grid, Users, TrendingUp } from 'lucide-react';
 import { getOpenAIApiKey, hasValidApiKey, initializeOpenAIClient, getOpenAIClient } from './config/apiConfig';
 import { getModelColor, getModelChartColors, getAllModelNames } from './config/modelColors';
-
-interface PropertyData {
-  prompt: string;
-  model_1_response: string;
-  model_2_response: string;
-  model_1_name: string;
-  model_2_name: string;
-  differences: string;
-  parsed_differences: string;
-  parse_error?: string;
-  model: string;
-  property_description: string;
-  category: string;
-  evidence?: string;
-  type: string;
-  reason: string;
-  impact: string;
-  unexpected_behavior?: string;
-  property_description_coarse_cluster_label: string;
-  property_description_fine_cluster_label: string;
-  property_description_coarse_cluster_id: number;
-  property_description_fine_cluster_id: number;
-  row_id?: number;
-}
+import { PropertyData } from './types';
 
 interface InteractivePropertyChartProps {
   data: PropertyData[];

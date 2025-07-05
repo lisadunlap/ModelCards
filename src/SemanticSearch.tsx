@@ -4,34 +4,10 @@ import { getCurrentDataSources, DATA_CONFIG } from './config/dataSources';
 import { getOpenAIApiKey, hasValidApiKey, initializeOpenAIClient, getOpenAIClient } from './config/apiConfig';
 import { vectorSearchService, SearchResult } from './services/vectorSearch';
 import { NORMALIZED_DEMO_PROPERTIES } from './data/demoData';
+import { PropertyDataWithEmbedding } from './types';
 
 // Use centralized API configuration
 const hasApiKey = hasValidApiKey();
-
-interface PropertyDataWithEmbedding {
-  prompt: string;
-  model_1_response: string;
-  model_2_response: string;
-  model_1_name: string;
-  model_2_name: string;
-  differences: string;
-  parsed_differences: string;
-  parse_error?: string;
-  model: string;
-  property_description: string;
-  category: string;
-  evidence: string;
-  type: string;
-  reason: string;
-  impact: string;
-  unexpected_behavior?: string;
-  property_description_coarse_cluster_label: string;
-  property_description_fine_cluster_label: string;
-  property_description_coarse_cluster_id: number;
-  property_description_fine_cluster_id: number;
-  embedding?: number[];
-  similarity_score?: number;
-}
 
 interface SemanticSearchProps {
   onViewResponse?: (item: PropertyDataWithEmbedding) => void;

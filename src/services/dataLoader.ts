@@ -7,30 +7,9 @@
  */
 
 import { getCurrentDataSources, getLoadingStrategy, DATA_CONFIG } from '../config/dataSources';
+import { PropertyData } from '../types';
 
-export interface PropertyData {
-  prompt: string;
-  model_1_response: string;
-  model_2_response: string;
-  model_1_name: string;
-  model_2_name: string;
-  differences: string;
-  parsed_differences: string;
-  parse_error?: string;
-  model: string;
-  property_description: string;
-  category: string;
-  evidence?: string;
-  type: string;
-  reason: string;
-  impact: string;
-  unexpected_behavior?: string;
-  property_description_coarse_cluster_label: string;
-  property_description_fine_cluster_label: string;
-  property_description_coarse_cluster_id: number;
-  property_description_fine_cluster_id: number;
-  row_id?: number; // For linking table and detail data
-}
+export type { PropertyData };
 
 export interface LoadingProgress {
   status: string;
@@ -273,6 +252,7 @@ class DataLoaderService {
   
   private normalizePropertyData(row: any): PropertyData {
     const normalized = {
+      question_id: row.question_id || '',
       prompt: row.prompt || '',
       model_1_response: row.model_1_response || '',
       model_2_response: row.model_2_response || '',
@@ -300,6 +280,7 @@ class DataLoaderService {
     if (Math.random() < 0.001) { // Log ~0.1% of rows
       console.log('🔍 Sample normalized data:', {
         row_id: normalized.row_id,
+        question_id: normalized.question_id,
         model: normalized.model,
         model_1_name: normalized.model_1_name,
         model_2_name: normalized.model_2_name,

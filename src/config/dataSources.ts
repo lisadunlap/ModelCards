@@ -41,6 +41,7 @@ export const DATA_SOURCES = {
     },
     ARENA_COMPARISON: {
       path: cdnPath('/arena_llm_reduced_labels.csv.gz'),
+      // path: cdnPath('/longer_descriptions_epsilon_02_reduced.csv.gz'),
       label: 'Actual Arena Battles',
       description: 'Chatbot Arena model comparison with HDBSCAN clustering'
     },
